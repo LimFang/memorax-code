@@ -1,0 +1,73 @@
+name: code-quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: code-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-ruff:
+    name: Python Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/ruff-action@v3
+        with:
+          args: check --config ruff.toml --select F,E9 .
+
+  typescript-eslint:
+    name: TypeScript ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: packages/ts/memorax-code-backend/package-lock.json
+
+      - name: Install Backend dependencies
+        run: npm ci --prefix packages/ts/memorax-code-backend
+
+      - name: Install lint runner dependencies without saving
+        run: npm install --no-save --no-package-lock eslint@^9 @eslint/js@^9 typescript-eslint@^8 globals@^15
+
+      - name: Run ESLint without fixes
+        run: npx eslint packages/ts/memorax-code-backend/src packages/ts/memorax-code-backend/test packages/ts/memorax-code-codex-adapter/src packages/ts/memorax-code-codex-adapter/test packages/ts/memorax-code-codex-adapter/hooks
+
+  docs-and-config:
+    name: Docs and Config Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Documentation contracts
+        env:
+          README_SYNC_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          README_SYNC_HEAD_REF: ${{ github.sha }}
+        run: make docs-check
+
+      - name: GitHub Actions lint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+      - name: Typo scan
+        uses: crate-ci/typos@v1.48.0
+        with:
+          config: typos.toml

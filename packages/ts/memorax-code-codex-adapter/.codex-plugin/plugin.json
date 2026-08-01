@@ -1,0 +1,33 @@
+{
+  "name": "memorax-code-codex-adapter",
+  "version": "0.1.0",
+  "description": "Codex adapter, memory skill, and local hooks for MemoraX Code.",
+  "author": {
+    "name": "MemoraX AI"
+  },
+  "homepage": "https://code.memorax.net/",
+  "license": "MIT",
+  "keywords": [
+    "memorax-code",
+    "codex",
+    "memory"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "MemoraX Code",
+    "shortDescription": "Connect Codex to MemoraX Code memory.",
+    "longDescription": "Provides Codex-facing memory skills and local hooks for MemoraX Code.",
+    "developerName": "MemoraX AI",
+    "category": "Productivity",
+    "capabilities": [
+      "Coding Memory"
+    ],
+    "websiteURL": "https://code.memorax.net/",
+    "composerIcon": "./assets/composer-icon.png",
+    "logo": "./assets/logo.png",
+    "defaultPrompt": [
+      "Use $memorax-code to route coding memory, repo memory, and personal memory in this workspace."
+    ]
+  }
+}

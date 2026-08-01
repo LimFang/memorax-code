@@ -1,0 +1,179 @@
+# Troubleshooting
+
+Start with the user-facing diagnostics:
+
+```sh
+memorax-code status
+memorax-cli status
+memorax-code-codex doctor
+memorax-code-claude doctor
+memorax-code logs
+```
+
+`status` checks the Backend and client integrations. `memory status` checks
+credentials, scope, and memory switches without printing secrets. Each client
+`doctor` checks its plugin, skill, workspace, and Backend connection.
+
+## Installed, but memory is unavailable
+
+The package and Backend can be healthy while MemoraX remains unconfigured. Run:
+
+```sh
+memorax-cli status
+```
+
+Configure `endpoint`, `user_id`, and `api_key` under `[memorax]` in
+`$MEMORAX_CODE_HOME/config.toml`, or set their environment equivalents. The
+current default endpoint is `https://platform.memorax.net`.
+
+After changing persistent configuration:
+
+```sh
+memorax-code start
+memorax-cli status
+```
+
+Automatic retrieval is disabled by default and is independent from explicit
+search. Automatic writeback requires `[memory.writeback] enabled = true` and
+must not be disabled by
+`MEMORAX_CODE_MEMORAX_WRITEBACK_ENABLED=false`.
+
+## Backend does not start
+
+```sh
+memorax-code status
+memorax-code logs
+memorax-code start
+```
+
+Check the reported bind address, port, and error code. The default is
+`127.0.0.1:8787`; another process may already own that port. A non-loopback
+bind is rejected unless external access is explicitly enabled and a Backend
+token is configured.
+
+If `status` reports an invalid or unsupported connection authority, MemoraX
+Code deliberately does not fall back to port 8787. `memorax-code stop` remains
+available. After confirming the intended local address, recover with:
+
+```sh
+memorax-code start --host 127.0.0.1 --port <intended-port>
+```
+
+The persisted authority changes only after the Backend becomes healthy. A
+one-off `--backend-url` or `MEMORAX_CODE_BACKEND_URL` override does not rewrite
+it.
+
+To rotate a Backend token:
+
+```sh
+memorax-code stop
+memorax-code token --rotate
+memorax-code start
+```
+
+Rotation is rejected while the managed Backend is running.
+
+Lifecycle state and locks fail closed when process ownership is uncertain.
+Do not delete PID or lock files while a process or lifecycle command may still
+be active. Let concurrent work finish, then rerun `memorax-code status`.
+
+## Codex plugin or Hook is inactive
+
+```sh
+memorax-code codex-plugin install
+memorax-code codex-plugin activate --yes
+memorax-code codex-plugin trust-hooks
+memorax-code start --clients codex
+memorax-code-codex doctor
+```
+
+Codex requires review for new or changed Hook command hashes. A declined or
+non-interactive update can leave Hooks untrusted even though the update
+succeeded. Do not write trust entries directly. If the skill is missing, rerun
+`memorax-code start --clients codex`, then restart or refresh Codex.
+
+## Claude Code plugin or Hook is inactive
+
+```sh
+memorax-code start --clients claude
+memorax-code-claude doctor
+```
+
+This reconciles the Claude Code marketplace plugin and Hooks. If the plugin is
+still missing or stale, restart or refresh Claude Code. Do not manually copy
+Hooks into Claude settings.
+
+An already-open client may keep its loaded plugin shell while a later prompt
+uses the updated Hook runtime. Restart or refresh the client to load a changed
+plugin manifest, icon, or bundled skill.
+
+## Hooks cannot reach localhost on macOS
+
+If shell requests work but Hook diagnostics fail, a global proxy or client
+environment may be intercepting `127.0.0.1` or `localhost`.
+
+```sh
+memorax-code start
+memorax-code-codex doctor
+memorax-code-claude doctor
+/usr/sbin/scutil --proxy
+/bin/launchctl getenv NO_PROXY
+/bin/launchctl getenv no_proxy
+```
+
+Correct the proxy or process environment, then fully quit and reopen the
+client. MemoraX Code does not edit system proxy settings or login
+environments. Redact proxy details before sharing diagnostics.
+
+## MemoraX search, add, or scope fails
+
+```sh
+memorax-cli status
+memorax-cli search --query 'test'
+memorax-code-codex doctor
+memorax-code-claude doctor
+```
+
+Common causes are:
+
+- missing or invalid MemoraX endpoint, base user ID, or API key;
+- the global writeback kill switch or CLI add switch disabling `memory add`;
+- no trusted workspace for the current session;
+- an unreadable, malformed, or symlinked Git marker;
+- one live session attempting to change to a different repository/workspace;
+- local DNS, proxy, or network failure.
+
+MemoraX Code reads filesystem Git metadata without executing Git. Linked
+worktrees share the remote repository identity; non-Git workspaces use the
+normalized folder name. Resolution never falls back to the bare base user ID.
+
+Codex projectless tasks under its canonical dated-task location intentionally
+use the shared `Codex-General` memory name. Open a task in a real workspace
+when repository isolation matters.
+
+## Model-provider requests fail while MemoraX Code is healthy
+
+MemoraX Code does not proxy Codex or Claude Code model requests. If
+`memorax-code status` and the relevant client doctor are healthy, inspect the
+provider URL, credentials, model selection, and network settings owned by that
+client. Do not copy model-provider credentials into
+`$MEMORAX_CODE_HOME`.
+
+## Safe issue reports
+
+Collect structured, redacted output:
+
+```sh
+memorax-code status --json
+memorax-cli status --json
+memorax-code-codex doctor --json
+memorax-code-claude doctor --json
+```
+
+Include the MemoraX Code version, operating system, affected client,
+reproduction steps, failing command, and the smallest relevant log excerpt.
+
+Never attach API keys, Backend tokens, environment files, complete client
+configuration, private transcripts, raw trace files, or unreviewed local
+paths. Redact usernames, workspace paths, remote URLs, and content before
+sharing.

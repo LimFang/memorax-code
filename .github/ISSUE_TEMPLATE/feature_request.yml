@@ -1,0 +1,71 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve MemoraX Code.
+        Do not include credentials, private session content, or other sensitive data.
+
+  - type: checkboxes
+    id: before_submitting
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and did not find a matching request.
+          required: true
+        - label: I removed credentials, private session content, and other sensitive data from every field and attachment.
+          required: true
+
+  - type: dropdown
+    id: primary_area
+    attributes:
+      label: Primary area
+      options:
+        - Installation or update
+        - Local service start, stop, or status
+        - Memory search
+        - Memory saving
+        - Memory Viewer
+        - Configuration
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: applicable_client
+    attributes:
+      label: Applicable client
+      options:
+        - Codex
+        - Claude Code
+        - Both Codex and Claude Code
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem_or_use_case
+    attributes:
+      label: Problem or use case
+      description: Describe the problem, limitation, or workflow that motivates this request.
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired_outcome
+    attributes:
+      label: Desired outcome
+      description: Describe what you would like MemoraX Code to support or improve.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context or attachments
+      description: Add sanitized examples, screenshots, or other context that may clarify the request.

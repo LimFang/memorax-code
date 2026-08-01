@@ -1,0 +1,8 @@
+target-version = "py310"
+line-length = 100
+
+[lint]
+# Start with correctness-only checks so the quality workflow is useful without
+# failing on existing style debt. Expand this list after code is normalized.
+select = ["F", "E9"]
+ignore = []

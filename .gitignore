@@ -1,0 +1,25 @@
+.DS_Store
+*.log
+/tmp/
+.memorax-code/
+
+# Generated local repo memory, including PROFILE.md.
+.repo_memory/
+
+node_modules
+dist/
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*
+env
+build/
+coverage/
+.ruff_cache/
+*.tsbuildinfo
+
+.codex/config.toml
+
+# Local git worktrees.
+/.worktrees/

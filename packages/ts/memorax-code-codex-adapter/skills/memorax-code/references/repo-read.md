@@ -1,0 +1,96 @@
+# Repo Memory Read
+
+## Role And Demand Gate
+
+Use existing `.repo_memory/` as a routing layer for repository identity, architecture, history, PR/issue context, remembered fixes, and cross-module search. Live code and tests remain authoritative.
+
+Select this reference for broad repo introduction, history, architecture background, cross-module routing, PR/issue context, design rationale, or stale-memory awareness. Skip this reference for narrow tasks with a clear live-code target.
+
+Only a relevant `repo-read` invokes `maintain`. Commit arrival, PR merge, and elapsed time alone do not invoke it. Explicit build, rebuild, or update requests still route through `SKILL.md` to `repo-build.md` or `repo-update.md`.
+
+## Repository And Helper
+
+Resolve the repository in this order:
+
+1. Use the user's explicit local path.
+2. Otherwise use the current workspace Git root.
+3. Infer a named local repo only when the match is unambiguous.
+4. Ask for the path only when multiple repos remain plausible.
+
+Derive memory as `<repo>/.repo_memory`; never ask for a memory-directory path. If the target is not inside a Git worktree, skip maintenance and continue from live files.
+
+`<skill-dir>` is the parent of this file's `references/` directory. The packaged client helper is:
+
+```bash
+node '<skill-dir>/../../hooks/repo-memory-job.mjs' maintain --repo '<repo>'
+```
+
+Use it only when it is a regular file. It validates the generated bundle, evaluates the configured local update policy without provider network access, and atomically selects one outcome:
+
+- `bundle_missing` or `bundle_invalid`: start supervised build;
+- a triggered policy decision: start supervised update;
+- `up_to_date`: no-op;
+- `active_job`: deduplicate against the running job.
+
+The default policy remains `adaptive(5 commits OR 24 hours)`. A missing or non-ancestor baseline always selects repair-capable update. The helper owns the detailed policy, validation, lock, snapshot, and launcher rules; do not reproduce them in the foreground.
+
+## Retrieval
+
+If `.repo_memory/PROFILE.md` is a readable regular file, read it once. Treat its descriptions as routing cues, not proof.
+
+Search `PROFILE.md` and `.repo_memory/resources/` with a combined query built from the user's strongest handles: path, basename, symbol, command, PR/issue number, error text, module, branch, environment variable, or config key.
+
+```bash
+rg -n '<handle-1>|<handle-2>' \
+  .repo_memory/PROFILE.md .repo_memory/resources
+```
+
+Use:
+
+- `resources/commits.md` for local history and regressions;
+- `resources/prs.md` for merged or active implementation context;
+- `resources/issues.md` for symptoms, requests, and requirements.
+
+If a read is missing, unreadable, or structurally mixed, discard conclusions that depend only on the bundle. Do not repair it in the foreground.
+
+## Retrieval Budget
+
+- Read `PROFILE.md` at most once.
+- Run at most 2 combined `rg` commands.
+- Stop repo-memory retrieval as soon as the hits are sufficient.
+- Open only the matched resource section when `rg` context is insufficient.
+
+Do NOT open these unless the user explicitly asks or a compact hit contains only a `facetId`:
+
+- `.repo_memory/raw/*.json`;
+- `docs/`, `packages/`, `tests/`, or other live source directories.
+
+The live directories restriction applies only during the bounded memory phase. Current implementation claims and code edits still require live-code verification after the maintenance handoff.
+
+## Single Maintenance Handoff
+
+After the final repo-memory read, run `maintain` as the very next tool action. Do not run it in parallel with a repo-memory read. Do not inspect live code, maintained documentation, Git evidence, run unrelated tools, or answer between them.
+
+If no repo-memory read was possible, run it immediately after detecting that state. The same handoff applies when hits already answer the question or the retrieval budget is exhausted.
+
+After it returns:
+
+- For `up_to_date`, a triggered update, or `active_job`, use consistent hits as best-effort context.
+- For `bundle_missing` or `bundle_invalid`, discard generated hits and continue from live code and maintained documentation.
+- If the helper is unavailable or fails, do not improvise maintenance. Use consistent hits only when they were readable; otherwise use live evidence.
+
+Do not read repo memory again after `maintain` returns. Do not wait, poll, retry, or expose the command, decision payload, job id, paths, prompt, final message, or logs. Never replace the packaged helper with a generic subagent.
+
+## Answer And Trust Rules
+
+Answer history, architecture, and context questions from sufficient memory hits after the handoff. If two bounded searches miss, say what was not found and ask whether to inspect more deeply.
+
+Continue into live evidence after the handoff when the user asks about current behavior, requests an edit, or the bundle was unavailable. Keep these distinctions explicit:
+
+- live code and targeted verification are stronger than generated memory;
+- tests are stronger than PR or issue summaries;
+- commits and merged PRs are historical evidence, not current-behavior proof;
+- open PRs describe intent;
+- issues describe problem context.
+
+Never create, update, delete, or repair repo-memory files in the foreground `repo-read` task.

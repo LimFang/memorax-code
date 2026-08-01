@@ -1,0 +1,7 @@
+interface:
+  display_name: "MemoraX Code"
+  short_description: "Route coding, repo, and personal memory"
+  default_prompt: "Use $memorax-code to route a coding-memory, repo-memory, or personal-memory request to the correct operation."
+
+policy:
+  allow_implicit_invocation: true

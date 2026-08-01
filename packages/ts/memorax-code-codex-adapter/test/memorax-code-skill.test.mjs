@@ -1,0 +1,145 @@
+import { strict as assert } from "node:assert";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const skillsRoot = join(packageRoot, "skills");
+const skillRoot = join(skillsRoot, "memorax-code");
+
+function readSkillFile(path) {
+  return readFileSync(join(skillRoot, path), "utf8");
+}
+
+test("memorax-code is the single progressive router for all memory authorities", () => {
+  const skill = readSkillFile("SKILL.md");
+
+  assert.match(skill, /name: memorax-code/);
+  assert.match(skill, /^# MemoraX Code$/m);
+  assert.match(skill, /## Authority Router/);
+  assert.match(skill, /### MemoraX Code Coding Memory/);
+  assert.match(skill, /### Repo Memory/);
+  assert.match(skill, /### Personal Memory/);
+  assert.match(skill, /Classify the requested memory authority first, then its operation/);
+  assert.match(skill, /Ask one focused question when the target remains ambiguous/);
+  assert.match(skill, /current-task instructions and temporary plans/);
+  assert.match(skill, /Do not call MemoraX HTTP endpoints directly/);
+  assert.match(skill, /Invoke this skill as `\$memorax-code` in Codex or `\/memorax-code` in Claude Code/);
+  assert.match(skill, /`memorax-code` is the lifecycle CLI and must not be used for memory search or add/);
+
+  for (const reference of [
+    "references/memorax-search.md",
+    "references/memorax-add.md",
+    "references/repo-read.md",
+    "references/repo-build.md",
+    "references/repo-update.md",
+    "references/repo-templates.md",
+    "references/personal-read.md",
+    "references/personal-write.md",
+  ]) {
+    assert.equal(existsSync(join(skillRoot, reference)), true, `${reference} should exist`);
+    assert.match(skill, new RegExp(reference.replaceAll(".", "\\.")));
+  }
+});
+
+test("memorax-code removes competing top-level memory skill entries", () => {
+  const skillDirectories = readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(skillsRoot, entry.name, "SKILL.md")))
+    .map((entry) => entry.name)
+    .sort();
+
+  assert.deepEqual(skillDirectories, ["memorax-code"]);
+});
+
+test("memorax-code references keep authority and operation boundaries explicit", () => {
+  const memoraxSearch = readSkillFile("references/memorax-search.md");
+  const memoraxAdd = readSkillFile("references/memorax-add.md");
+  const repoRead = readSkillFile("references/repo-read.md");
+  const repoBuild = readSkillFile("references/repo-build.md");
+  const repoUpdate = readSkillFile("references/repo-update.md");
+  const personalRead = readSkillFile("references/personal-read.md");
+  const personalWrite = readSkillFile("references/personal-write.md");
+
+  assert.match(memoraxSearch, /memorax-cli search/);
+  assert.match(memoraxSearch, /at most one focused search/);
+  assert.match(memoraxSearch, /Do not call MemoraX HTTP endpoints directly/);
+  assert.match(memoraxSearch, /memorax-cli search --query '/);
+  assert.match(memoraxSearch, /Linked worktrees share one repository scope/);
+  assert.match(memoraxSearch, /without executing Git/);
+  assert.match(memoraxSearch, /genuine non-Git directories/);
+  assert.match(memoraxSearch, /linked worktree of the bound repository is valid/);
+  assert.doesNotMatch(memoraxSearch, /--query-file/);
+  assert.match(memoraxAdd, /CODE_AGENT_MEMORY/);
+  assert.match(memoraxAdd, /Route user-owned ordered actions/);
+  assert.match(memoraxAdd, /For a proactive add, write all generated prose/);
+  assert.match(memoraxAdd, /language of the user's current request/);
+  assert.match(memoraxAdd, /preserve exact code, API, path, workflow, and project identifiers/);
+  assert.match(memoraxAdd, /memorax-cli add[\s\S]*--memory '/);
+  assert.doesNotMatch(memoraxAdd, /--memory-file/);
+  assert.match(repoRead, /## Retrieval Budget/);
+  assert.match(repoRead, /Do not read repo memory again after `maintain` returns/);
+  assert.match(repoRead, /Current implementation claims and code edits still require live-code verification/);
+  assert.match(repoBuild, /first-time creation, full rebuilds, or full refreshes/);
+  assert.match(repoBuild, /scripts\/collect_all\.py/);
+  assert.match(repoUpdate, /Update existing repo memory from a delta/);
+  assert.match(repoUpdate, /scripts\/detect_updates\.py/);
+  assert.match(personalRead, /Do not write, normalize, migrate, repair, or delete memory/);
+  assert.match(personalWrite, /Require the user to explicitly ask/);
+  assert.match(personalWrite, /may be saved implicitly/);
+});
+
+test("memorax-code search guidance combines semantic intent with exact anchors", () => {
+  const memoraxSearch = readSkillFile("references/memorax-search.md");
+
+  assert.match(memoraxSearch, /one short natural-language question or intent statement, not a keyword list/);
+  assert.match(memoraxSearch, /instead of copying or concatenating nouns from the prompt/);
+  assert.match(memoraxSearch, /Follow the user's language/);
+  assert.match(memoraxSearch, /relationship, decision, constraint, behavior, or risk/);
+  assert.match(memoraxSearch, /Include 2-5 stable exact identifiers/);
+  assert.match(memoraxSearch, /integrate them grammatically/);
+  assert.match(memoraxSearch, /do not shorten them into ungrammatical fragments/);
+
+  assert.match(memoraxSearch, /What prior decisions define the memorax-code parser API failure boundary/);
+  assert.match(memoraxSearch, /What prior review policies and regression risks apply/);
+  assert.match(memoraxSearch, /Backend、Codex adapter 与 memory 层的职责如何衔接/);
+});
+
+test("memorax-code retries read-only search once after transport or sandbox failure", () => {
+  const memoraxSearch = readSkillFile("references/memorax-search.md");
+
+  assert.match(memoraxSearch, /`fetch failed`/);
+  assert.match(memoraxSearch, /retry the same `memorax-cli search` once/);
+  assert.match(memoraxSearch, /approved network-enabled execution mode/);
+  assert.match(memoraxSearch, /Preserve the same query, workspace, and environment variables/);
+  assert.match(memoraxSearch, /Do not apply this retry to `memorax-cli add`/);
+  assert.match(memoraxSearch, /authentication or configuration failures, or HTTP errors/);
+  assert.match(memoraxSearch, /If no approved mode[\s\S]*report the exact CLI failure/);
+});
+
+test("memorax-code uses POSIX-safe direct CLI arguments", () => {
+  const memoraxSearch = readSkillFile("references/memorax-search.md");
+  const memoraxAdd = readSkillFile("references/memorax-add.md");
+  const guidance = `${memoraxSearch}\n${memoraxAdd}`;
+
+  assert.match(memoraxSearch, /dynamically generated query in single quotes, never double quotes/);
+  assert.match(memoraxAdd, /dynamically generated `--memory` and `--reason` value in single quotes, never double quotes/);
+  assert.match(guidance, /Treat `\$HOME`, backticks, and `\$\(command\)` as literal text/);
+  assert.match(guidance, /exact POSIX sequence/);
+});
+
+test("memorax-code declares OpenAI and Claude implicit invocation metadata", () => {
+  const openaiYaml = readSkillFile("agents/openai.yaml");
+  const claudeYaml = readSkillFile("agents/claude.yaml");
+
+  assert.match(openaiYaml, /display_name: "MemoraX Code"/);
+  assert.match(openaiYaml, /Route coding, repo, and personal memory/);
+  assert.match(openaiYaml, /Use \$memorax-code to route/);
+  assert.match(openaiYaml, /allow_implicit_invocation: true/);
+
+  assert.match(claudeYaml, /display_name: "MemoraX Code"/);
+  assert.match(claudeYaml, /Use \/memorax-code-claude-adapter:memorax-code to route/);
+  assert.doesNotMatch(claudeYaml, /Use \/memorax-code to route/);
+  assert.match(claudeYaml, /~\/\.claude\/skills\/memorax-code/);
+  assert.match(claudeYaml, /allow_implicit_invocation: true/);
+});

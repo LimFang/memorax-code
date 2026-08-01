@@ -1,0 +1,125 @@
+name: Bug report
+description: Report unexpected or incorrect behavior
+labels:
+  - bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve MemoraX Code.
+        Do not include credentials, private session content, or other sensitive data.
+
+  - type: checkboxes
+    id: before_submitting
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and did not find a matching report.
+          required: true
+        - label: I removed credentials, private session content, and other sensitive data from every field and attachment.
+          required: true
+
+  - type: input
+    id: memorax_code_version
+    attributes:
+      label: MemoraX Code version or commit
+      placeholder: "For example: 0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: previous_version
+    attributes:
+      label: Previous or last known working MemoraX Code version
+      description: Leave this blank if the issue has always occurred or the previous version is unknown.
+      placeholder: "For example: 0.1.0"
+
+  - type: input
+    id: operating_system
+    attributes:
+      label: Operating system and version
+      placeholder: "For example: macOS 15.5 or Windows 11 24H2"
+    validations:
+      required: true
+
+  - type: input
+    id: client_version
+    attributes:
+      label: Codex or Claude Code version
+      description: Enter the version of the affected client if it is available.
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options:
+        - Codex
+        - Claude Code
+        - Both Codex and Claude Code
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected_area
+    attributes:
+      label: Primary affected area
+      options:
+        - Installation or update
+        - Local service start, stop, or status
+        - Memory search
+        - Memory saving
+        - Memory Viewer
+        - Configuration
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+      description: Describe what happened, including any visible error message.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: Describe what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: If the issue is intermittent, describe the circumstances in which it occurs.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Bug frequency
+      options:
+        - Every time
+        - Often
+        - Sometimes
+        - Happened only once
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context or attachments
+      description: Add sanitized logs, screenshots, or other context that may help diagnose the issue.

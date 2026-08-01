@@ -1,0 +1,26 @@
+{
+  "name": "@memorax-code/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local memory integration, lifecycle, trace, and diagnostics for MemoraX Code.",
+  "bin": {
+    "memorax-code": "dist/memorax-code.js",
+    "memorax-code-backend": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "dev:backend": "node --watch dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test --test-timeout=5000 --test-force-exit test/*.test.mjs",
+    "test:memory-viewer": "npm run build && node --test --test-timeout=5000 --test-force-exit test/memory-viewer-routes.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "smol-toml": "^1.7.0"
+  }
+}
