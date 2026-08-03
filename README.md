@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://code.memorax.net/"><img src="https://img.shields.io/badge/website-code.memorax.net-2563eb" alt="MemoraX Code website"></a>
   <a href="https://www.npmjs.com/package/@memorax/memorax-code"><img src="https://img.shields.io/npm/v/@memorax/memorax-code.svg" alt="npm version"></a>
-  <img src="https://img.shields.io/badge/version-0.1.0-f59e0b" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/version-0.1.1-f59e0b" alt="Version 0.1.1">
   <img src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&logoColor=white" alt="Node.js 24 or newer">
 </p>
 
