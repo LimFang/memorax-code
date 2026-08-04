@@ -611,7 +611,12 @@ function printLifecycleResult(report: MemoraxCodeLifecycleReport): void {
   backendLog(`${lifecycleActionLabel(report.action)}: ${report.ok ? green(degraded ? "ok (degraded)" : "ok") : red("needs attention")}`);
   if (report.message) backendLog(report.message);
   if (report.backend) {
-    backendLog(`Backend: ${report.backend.ok ? green(report.backend.degraded ? "ok (degraded)" : "ok") : red("not ok")}${report.backend.state?.url ? ` ${report.backend.state.url}` : ""}${report.backend.errorCode ? ` code=${report.backend.errorCode}` : ""}${report.backend.error ? ` error=${report.backend.error}` : ""}`);
+    const status = !report.backend.ok
+      ? red("not ok")
+      : report.backend.action === "stop"
+        ? green(report.backend.skipped ? "kept running" : "stopped")
+        : green(report.backend.degraded ? "ok (degraded)" : "ok");
+    backendLog(`Backend: ${status}${report.backend.state?.url ? ` ${report.backend.state.url}` : ""}${report.backend.errorCode ? ` code=${report.backend.errorCode}` : ""}${report.backend.error ? ` error=${report.backend.error}` : ""}`);
     for (const warning of report.backend.warnings ?? []) {
       backendLog(`Warning: ${warning.message}${warning.errorCode ? ` code=${warning.errorCode}` : ""}`);
     }

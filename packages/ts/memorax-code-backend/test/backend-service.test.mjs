@@ -900,6 +900,7 @@ test("memorax-code lifecycle CLI prints prefixed user guidance", async () => {
     ]);
     assert.equal(stopped.code, 0, `${stopped.stdout}\n${stopped.stderr}`);
     assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: Stop: .*ok/m);
+    assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: Backend: .*stopped/m);
     assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: .*Backend is stopped\./m);
 
     const uninstalled = await runCli(cliPath, [
@@ -911,6 +912,7 @@ test("memorax-code lifecycle CLI prints prefixed user guidance", async () => {
     ]);
     assert.equal(uninstalled.code, 0, `${uninstalled.stdout}\n${uninstalled.stderr}`);
     assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: Uninstall: .*ok/m);
+    assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: Backend: .*stopped/m);
     assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: npm package: skipped partial_client_uninstall/m);
     assert.doesNotMatch(uninstalled.stdout, /MemoraX Code has been uninstalled/);
     assert.doesNotMatch(uninstalled.stdout, /Restart or refresh (?:Codex|Claude Code)/);
@@ -953,13 +955,18 @@ test("memorax-code uninstall guidance names only the selected Claude client", as
       "--no-npm-uninstall",
     ], { env });
     assert.equal(uninstalled.code, 0, `${uninstalled.stdout}\n${uninstalled.stderr}`);
+    assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: Backend: .*kept running.*127\.0\.0\.1/m);
     assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: npm package: skipped partial_client_uninstall/m);
     assert.match(uninstalled.stdout, /MemoraX Code has been uninstalled from Claude Code\./);
     assert.match(uninstalled.stdout, /Restart or refresh Claude Code so it drops the removed adapter plugin\./);
     assert.doesNotMatch(uninstalled.stdout, /uninstalled from this npm installation/);
     assert.doesNotMatch(uninstalled.stdout, /Restart or refresh Codex/);
+
+    const stopped = await runCli(cliPath, ["stop", ...commonArgs, "--clients", "codex"], { env });
+    assert.equal(stopped.code, 0, `${stopped.stdout}\n${stopped.stderr}`);
+    assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: Backend: .*stopped.*127\.0\.0\.1/m);
   } finally {
-    await runCli(cliPath, ["stop", "--json", ...commonArgs, "--clients", "codex"], { env });
+    await runCli(cliPath, ["stop", "--json", ...commonArgs, "--clients", "none"], { env });
     await rm(home, { recursive: true, force: true });
     await rm(codexHome, { recursive: true, force: true });
     await rm(claudeHome, { recursive: true, force: true });
