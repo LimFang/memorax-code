@@ -205,6 +205,39 @@ test("memory writeback buffer discards degraded turns when the same session upgr
   }
 });
 
+test("memory writeback buffer cancels the degraded idle timer when session scope upgrades", (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1_000 });
+  const runtime = createMemoryWritebackBufferRuntime();
+  const flushes = [];
+  const debugEvents = [];
+  const deps = createDeps(flushes, { debugEvents });
+  const env = bufferEnv({ maxAgeMs: 100 });
+  try {
+    runtime.enqueue({
+      client: "codex",
+      sessionKey: "interrupted-repair-session",
+      idempotencyKey: "fallback-turn",
+      messages: [{ role: "user", content: "fallback content" }],
+    }, { env, repositoryScope: DEGRADED_GIT_SCOPE }, deps);
+
+    assert.equal(runtime.discardForScopeUpgrade({
+      client: "codex",
+      sessionKey: "interrupted-repair-session",
+      currentScope: REPAIRED_GIT_SCOPE,
+    }), 1);
+    t.mock.timers.tick(100);
+
+    assert.equal(flushes.length, 0);
+    assert.equal(runtime.flushAll("shutdown"), 0);
+    assert.equal(debugEvents.some((fields) => (
+      fields.skipReason === "buffer_scope_upgraded"
+      && fields.discardedTurnCount === 1
+    )), true);
+  } finally {
+    runtime.close();
+  }
+});
+
 test("memory writeback buffer never merges sessions", () => {
   const flushes = [];
   const deps = createDeps(flushes);

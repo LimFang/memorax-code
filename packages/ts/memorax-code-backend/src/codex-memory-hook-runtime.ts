@@ -8,6 +8,7 @@ import {
   createAutomaticMemoryWritebackRuntime,
   type AutomaticMemoryWritebackEnqueue,
   type AutomaticMemoryWritebackRejectionReason,
+  type AutomaticMemoryWritebackRuntime,
 } from "./automatic-memory-writeback.js";
 import { retrieveAutomaticMemoryContext } from "./automatic-memory-retrieval.js";
 import { readCodexSessionTurnIndex } from "./codex-session-turn-index.js";
@@ -109,6 +110,7 @@ export function createCodexMemoryHookRuntime(options: CodexMemoryHookRuntimeOpti
   const now = options.now ?? (() => Date.now());
   const automaticWritebackRuntime: {
     enqueue: AutomaticMemoryWritebackEnqueue;
+    discardForScopeUpgrade?: AutomaticMemoryWritebackRuntime["discardForScopeUpgrade"];
     close?: () => void;
   } | undefined = options.turnCoordinator
     ? undefined
@@ -123,7 +125,9 @@ export function createCodexMemoryHookRuntime(options: CodexMemoryHookRuntimeOpti
     cleanupIntervalMs: options.cleanupIntervalMs,
   });
   const ownsTurnCoordinator = options.turnCoordinator === undefined;
-  const repositoryMemorySession = options.repositoryMemorySession ?? createRepositoryMemorySessionRuntime();
+  const repositoryMemorySession = options.repositoryMemorySession ?? createRepositoryMemorySessionRuntime({
+    onScopeUpgrade: automaticWritebackRuntime?.discardForScopeUpgrade,
+  });
   const ownsRepositoryMemorySession = options.repositoryMemorySession === undefined;
   const automaticRetrievalTurns = new Set<string>();
   const automaticRetrievalTurnLimit = positiveInteger(options.maxEntries, 256);

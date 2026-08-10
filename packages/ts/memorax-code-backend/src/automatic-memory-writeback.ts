@@ -24,6 +24,7 @@ import {
   memoryWritebackEnabled,
   memoryWritebackMaxMessageChars,
 } from "./memorax-config.js";
+import type { RepositoryMemorySessionScopeUpgrade } from "./repository-memory-context.js";
 import type {
   RepositoryMemoryScope,
   RepositoryMemoryScopeFailureReason,
@@ -76,6 +77,7 @@ export type AutomaticMemoryWritebackEnqueue = (
 
 export type AutomaticMemoryWritebackRuntime = {
   enqueue: AutomaticMemoryWritebackEnqueue;
+  discardForScopeUpgrade(upgrade: RepositoryMemorySessionScopeUpgrade): number;
   drain(): Promise<void>;
   close(): void;
 };
@@ -112,6 +114,13 @@ export function createAutomaticMemoryWritebackRuntime(
   return {
     enqueue(options) {
       return enqueueAutomaticMemoryWritebackForRuntime(state, options);
+    },
+    discardForScopeUpgrade(upgrade) {
+      return state.writebackBuffer.discardForScopeUpgrade({
+        client: upgrade.client,
+        sessionKey: upgrade.sessionId,
+        currentScope: upgrade.currentScope,
+      });
     },
     drain() {
       if (state.drainPromise) return state.drainPromise;
