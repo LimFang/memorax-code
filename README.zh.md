@@ -55,11 +55,8 @@ npm install -g @memorax/memorax-code --foreground-scripts
 ```
 
 请保留 `--foreground-scripts`，以便查看完整的安装过程。安装器会自动检测本机可用的 Codex
-和 Claude Code，并为检测到的客户端启用集成。Codex 探测覆盖其 CLI、macOS 和 Windows
-上的 Codex 桌面应用 runtime，以及官方 VS Code 扩展。
-按照终端提示输入 Base User ID、偏好语言和 API Key；Codex 用户还需按提示完成 Hook 的激活和信任确认。
-
-在 Windows 上安装前，请先打开一次 Codex 桌面应用，使其生成可执行的本地插件 runtime。
+和 Claude Code，并为检测到的客户端启用集成。按照终端提示输入 Base User ID、偏好语言和
+API Key；Codex 用户还需按提示完成 Hook 的激活和信任确认。
 
 如果跳过配置或安装过程无法交互，npm 包仍会安装，但 MemoraX 搜索、召回和写回功能无法使用。
 
