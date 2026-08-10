@@ -1,6 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import {
   commandOnPath,
   defaultVsCodeExtensionRoots,
@@ -9,6 +10,9 @@ import {
 } from "./vscode-extension-command.mjs";
 
 const APP_BUNDLE_NAMES = ["ChatGPT.app", "Codex.app"];
+const WINDOWS_CODEX_APP_PACKAGE_NAME = "OpenAI.Codex";
+const WINDOWS_CODEX_APP_QUERY_TIMEOUT_MS = 10_000;
+const WINDOWS_CODEX_APP_RUNTIME_SEGMENTS = ["app", "resources", "codex.exe"];
 
 export function resolveCodexCommand({
   env = process.env,
@@ -17,6 +21,9 @@ export function resolveCodexCommand({
   arch = process.arch,
   applicationRoots = [join(homeDir, "Applications"), "/Applications"],
   vscodeExtensionRoots = defaultVsCodeExtensionRoots(homeDir),
+  windowsAppInstallLocations,
+  windowsAppQuery = spawnSync,
+  windowsPathExists = isExecutableCommand,
 } = {}) {
   const npmOverride = nonEmpty(env.MEMORAX_CODE_CODEX_COMMAND);
   if (npmOverride) return { command: npmOverride, source: "npm-override" };
@@ -37,6 +44,15 @@ export function resolveCodexCommand({
     }
   }
 
+  const windowsAppCommand = resolveWindowsCodexAppCommand({
+    env,
+    installLocations: windowsAppInstallLocations,
+    pathExists: windowsPathExists,
+    platform,
+    spawnSyncImpl: windowsAppQuery,
+  });
+  if (windowsAppCommand) return { command: windowsAppCommand, source: "app-bundled" };
+
   const vscodeCommand = findVsCodeExtensionCommand({
     extensionId: "openai.chatgpt",
     extensionRoots: vscodeExtensionRoots,
@@ -47,6 +63,22 @@ export function resolveCodexCommand({
   if (vscodeCommand) return { command: vscodeCommand, source: "vscode-bundled" };
 
   return { command: "codex", source: "unavailable" };
+}
+
+export function resolveWindowsCodexAppCommand({
+  env = process.env,
+  installLocations,
+  pathExists = isExecutableCommand,
+  platform = process.platform,
+  spawnSyncImpl = spawnSync,
+} = {}) {
+  if (platform !== "win32") return undefined;
+  const locations = installLocations ?? queryWindowsCodexAppInstallLocations(env, spawnSyncImpl);
+  for (const location of locations) {
+    const command = win32.join(location, ...WINDOWS_CODEX_APP_RUNTIME_SEGMENTS);
+    if (pathExists(command, platform)) return command;
+  }
+  return undefined;
 }
 
 export function ensureCodexCommandEnv(options = {}) {
@@ -86,6 +118,42 @@ function codexPlatformDirectories(platform, arch) {
     if (arch === "x64") return ["windows-x86_64", "windows-x64", "win32-x64"];
   }
   return [];
+}
+
+function queryWindowsCodexAppInstallLocations(env, spawnSyncImpl) {
+  const powershell = windowsPowerShellCommand(env);
+  const script = [
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    `Get-AppxPackage -Name '${WINDOWS_CODEX_APP_PACKAGE_NAME}' -ErrorAction SilentlyContinue | ForEach-Object { $_.InstallLocation }`,
+  ].join("; ");
+  let result;
+  try {
+    result = spawnSyncImpl(
+      powershell,
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        encoding: "utf8",
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: WINDOWS_CODEX_APP_QUERY_TIMEOUT_MS,
+        windowsHide: true,
+      },
+    );
+  } catch {
+    return [];
+  }
+  if (result.status !== 0 || result.error || result.signal) return [];
+  return [...new Set(String(result.stdout ?? "")
+    .split(/\r?\n/)
+    .map((value) => value.replace(/^\uFEFF/, "").trim())
+    .filter((value) => value && win32.isAbsolute(value)))];
+}
+
+function windowsPowerShellCommand(env) {
+  const systemRoot = nonEmpty(env.SystemRoot) ?? nonEmpty(env.SYSTEMROOT);
+  return systemRoot
+    ? win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    : "powershell.exe";
 }
 
 function nonEmpty(value) {

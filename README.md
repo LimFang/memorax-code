@@ -61,9 +61,10 @@ npm install -g @memorax/memorax-code --foreground-scripts
 
 Keep `--foreground-scripts` so the complete setup remains visible. The
 installer automatically detects runnable Codex and Claude Code clients and
-connects the clients it finds. Follow the prompts to enter your Base User ID,
-preferred language, and API key. Codex users must also approve Hook activation
-and trust when prompted.
+connects the clients it finds. Codex detection covers its CLI, the Codex
+desktop app on macOS and Windows, and the official VS Code extension. Follow
+the prompts to enter your Base User ID, preferred language, and API key. Codex
+users must also approve Hook activation and trust when prompted.
 
 If setup is skipped or cannot prompt, the package remains installed but
 MemoraX-backed search, retrieval, and writeback remain unavailable.

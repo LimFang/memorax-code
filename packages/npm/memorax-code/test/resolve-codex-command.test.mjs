@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, win32 } from "node:path";
 import test from "node:test";
-import { ensureCodexCommandEnv, resolveCodexCommand } from "../lib/resolve-codex-command.mjs";
+import {
+  ensureCodexCommandEnv,
+  resolveCodexCommand,
+  resolveWindowsCodexAppCommand,
+} from "../lib/resolve-codex-command.mjs";
 
 async function executable(path) {
   await mkdir(dirname(path), { recursive: true });
@@ -70,6 +74,53 @@ test("Codex command resolution uses the desktop App bundled runtime without a PA
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("Codex command resolution uses the registered Windows App bundled runtime", () => {
+  const installLocation = "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.727.6591.0_x64__test";
+  const appCommand = win32.join(installLocation, "app", "resources", "codex.exe");
+  const calls = [];
+  const env = {
+    PATH: "C:\\missing-bin",
+    PATHEXT: ".EXE;.CMD;.BAT;.COM",
+    SystemRoot: "C:\\Windows",
+  };
+  const resolved = ensureCodexCommandEnv({
+    env,
+    homeDir: "C:\\Users\\tester",
+    platform: "win32",
+    arch: "x64",
+    vscodeExtensionRoots: [],
+    windowsAppQuery(command, args, options) {
+      calls.push({ command, args, options });
+      return { status: 0, stdout: `\uFEFF${installLocation}\r\n`, stderr: "" };
+    },
+    windowsPathExists: (candidate, platform) => candidate === appCommand && platform === "win32",
+  });
+
+  assert.deepEqual(resolved, { command: appCommand, source: "app-bundled" });
+  assert.equal(env.CODEX_CLI_PATH, appCommand);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  assert.deepEqual(calls[0].args.slice(0, 4), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]);
+  assert.match(calls[0].args[4], /Get-AppxPackage -Name 'OpenAI\.Codex'/);
+  assert.equal(calls[0].options.timeout, 10_000);
+});
+
+test("Windows Codex App resolution ignores failed and malformed package queries", () => {
+  const common = {
+    env: { SystemRoot: "C:\\Windows" },
+    platform: "win32",
+    pathExists: () => true,
+  };
+  assert.equal(resolveWindowsCodexAppCommand({
+    ...common,
+    spawnSyncImpl: () => ({ status: 1, stdout: "", stderr: "failed" }),
+  }), undefined);
+  assert.equal(resolveWindowsCodexAppCommand({
+    ...common,
+    spawnSyncImpl: () => ({ status: 0, stdout: "relative\\OpenAI.Codex\r\n", stderr: "" }),
+  }), undefined);
 });
 
 test("Codex command resolution uses the newest matching VS Code bundled runtime", async () => {
