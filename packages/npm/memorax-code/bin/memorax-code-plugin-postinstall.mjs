@@ -738,7 +738,11 @@ function runCodexPreflight() {
 
 function runClaudePreflight() {
   const version = runExternalCommand(claudeCommand, ["--version"], { print: false, timeout: 10_000 });
-  const runtimeLabel = claudeRuntime.source === "vscode-bundled" ? "Claude VS Code runtime" : "Claude CLI";
+  const runtimeLabel = claudeRuntime.source === "app-bundled"
+    ? "Claude Code App runtime"
+    : claudeRuntime.source === "vscode-bundled"
+      ? "Claude VS Code runtime"
+      : "Claude CLI";
   log(`${runtimeLabel}: ${commandSummary(version) ?? "not runnable"}`);
   if (version.status !== 0) return { ok: false };
   log("Keeping Claude Code provider config unchanged and enabling the shared memory Hook integration.");
