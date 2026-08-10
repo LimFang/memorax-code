@@ -6,6 +6,7 @@ import type {
 } from "./automatic-memory-writeback.js";
 import type { ConfiguredRepositoryMemoryResult } from "./repository-memory-context.js";
 import {
+  repositoryMemoryScopeCanUpgradeFromDegradedGit,
   repositoryMemoryScopesMatch,
   type RepositoryMemoryScope,
   type RepositoryMemoryScopeFailureReason,
@@ -164,12 +165,15 @@ export function createMemoryTurnCoordinator(options: MemoryTurnCoordinatorOption
       if (!currentScope) {
         return reject(input.metadata ? "workspace_scope_mismatch" : "workspace_scope_unavailable");
       }
-      const repositoryScope = input.metadata?.repositoryScope ?? currentScope;
+      let repositoryScope = input.metadata?.repositoryScope ?? currentScope;
       if (
         input.metadata?.repositoryScope
         && !repositoryMemoryScopesMatch(input.metadata.repositoryScope, currentScope)
       ) {
-        return reject("workspace_scope_mismatch");
+        if (!repositoryMemoryScopeCanUpgradeFromDegradedGit(input.metadata.repositoryScope, currentScope)) {
+          return reject("workspace_scope_mismatch");
+        }
+        repositoryScope = currentScope;
       }
       const acceptance = options.automaticWriteback({
         ...input.writeback,

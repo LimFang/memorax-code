@@ -3,6 +3,7 @@ import {
   type MemoraxAdapterConfig,
 } from "./memorax-config.js";
 import {
+  repositoryMemoryScopeCanUpgradeFromDegradedGit,
   repositoryMemoryScopeContainsWorkspace,
   repositoryMemoryScopeKind,
   repositoryMemoryScopesMatch,
@@ -157,6 +158,10 @@ export async function resolveConfiguredRepositoryMemoryForSession(
     if (!scopeResult.ok) return scopeResult;
     if (cached?.scope.baseUserId === configResult.config.userId) {
       if (!repositoryMemoryScopesMatch(cached.scope, scopeResult.scope)) {
+        if (repositoryMemoryScopeCanUpgradeFromDegradedGit(cached.scope, scopeResult.scope)) {
+          cached.scope = scopeResult.scope;
+          return { ok: true, memory: { config: configResult.config, scope: scopeResult.scope } };
+        }
         cached.mismatch = true;
         return repositoryScopeMismatch();
       }

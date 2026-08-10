@@ -231,6 +231,31 @@ test("memory CLI falls back to the folder scope when direct Git metadata is malf
   assert.equal(requests.length, 2);
   assert.equal(requests[0].body.user_id, "user-1@quant");
   assert.equal(requests[1].body.user_id, "user-1@quant");
+
+  await createRepositoryMetadata(workspace, "quant-repository");
+  const repairedSearch = await runMemoryCli(["search", "--query", "use repaired Git scope"], options);
+  const repairedAdd = await runMemoryCli([
+    "add",
+    "--memory",
+    "Use the repaired Git scope.",
+    "--type",
+    "procedural",
+    "--reason",
+    "Verify same-session scope recovery.",
+  ], options);
+
+  for (const result of [repairedSearch, repairedAdd]) {
+    assert.equal(result.ok, true);
+    assert.equal(result.workspaceScope, "bound");
+    assert.equal(result.scopeKind, "git-repository");
+    assert.equal(result.workspace, "quant-repository");
+    assert.equal(result.effectiveUserId, "user-1@quant-repository");
+    assert.equal(result.workspaceScopeFallbackReason, undefined);
+    assert.equal(result.userNotice, undefined);
+  }
+  assert.equal(requests.length, 4);
+  assert.equal(requests[2].body.user_id, "user-1@quant-repository");
+  assert.equal(requests[3].body.user_id, "user-1@quant-repository");
 });
 
 test("memory CLI gives the same scope recovery guidance for a Claude turn", async () => {

@@ -5,7 +5,10 @@ import type {
   MemoryObservabilitySource,
 } from "./memory-observability.js";
 import { memoryWritebackBufferConfig } from "./memorax-config.js";
-import type { RepositoryMemoryScope } from "./repository-memory-scope.js";
+import {
+  repositoryMemoryScopeCanUpgradeFromDegradedGit,
+  type RepositoryMemoryScope,
+} from "./repository-memory-scope.js";
 import type { TraceContext } from "./trace-context.js";
 
 export type MemoryWritebackBufferDecision = {
@@ -138,6 +141,12 @@ function enqueueMemoryWritebackBufferForRuntime(
   const env = options.env ?? process.env;
   const config = memoryWritebackBufferConfig(env);
   if (!options.repositoryScope) return;
+  discardDegradedGitBuffersForUpgrade(
+    writebackBuffers,
+    decision,
+    options.repositoryScope,
+    deps,
+  );
   const bufferKey = memoryWritebackBufferKey(
     decision.client,
     decision.sessionKey,
@@ -201,6 +210,29 @@ function enqueueMemoryWritebackBufferForRuntime(
     flushMemoryWritebackBuffer(writebackBuffers, bufferKey, "char_limit", deps);
   } else {
     resetMemoryWritebackIdleTimer(writebackBuffers, buffer, config.maxAgeMs, deps);
+  }
+}
+
+function discardDegradedGitBuffersForUpgrade(
+  writebackBuffers: Map<string, MemoryWritebackBuffer>,
+  decision: MemoryWritebackBufferDecision,
+  repositoryScope: RepositoryMemoryScope,
+  deps: MemoryWritebackBufferDeps,
+): void {
+  for (const [bufferKey, buffer] of writebackBuffers.entries()) {
+    if (
+      buffer.client !== decision.client
+      || buffer.sessionKey !== decision.sessionKey
+      || !repositoryMemoryScopeCanUpgradeFromDegradedGit(buffer.repositoryScope, repositoryScope)
+    ) continue;
+    writebackBuffers.delete(bufferKey);
+    if (buffer.timer) buffer.clock.clearTimeout(buffer.timer);
+    deps.debug("memory.automatic_writeback", {
+      scheduled: false,
+      skipReason: "buffer_scope_upgraded",
+      sessionKey: decision.sessionKey,
+      discardedTurnCount: buffer.turns.length,
+    });
   }
 }
 

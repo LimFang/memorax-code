@@ -11,6 +11,7 @@ import {
   resolveConfiguredRepositoryMemoryForSession,
 } from "../dist/repository-memory-context.js";
 import {
+  repositoryMemoryScopeCanUpgradeFromDegradedGit,
   repositoryMemoryScopeContainsWorkspace,
   repositoryMemoryScopesMatch,
   resolveRepositoryMemoryScope,
@@ -805,7 +806,7 @@ test("a non-Git session cannot silently acquire degraded Git fallback provenance
   assert.equal(freshSession.memory.scope.fallbackReason, "git_metadata_invalid");
 });
 
-test("a degraded Git-directory session remains pinned when Git metadata is repaired", async () => {
+test("a degraded Git-directory session upgrades when Git metadata is repaired", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-workspace-degraded-git-repair-"));
   const home = join(root, "home");
   const workspace = join(root, "quant");
@@ -849,8 +850,25 @@ test("a degraded Git-directory session remains pinned when Git metadata is repai
   assert.equal(initial.memory.scope.effectiveUserId, "alice@quant");
   assert.equal(nestedTurn.ok, true);
   assert.equal(nestedTurn.memory.scope.repositoryKey, initial.memory.scope.repositoryKey);
-  assert.equal(repairedTurn.ok, false);
-  assert.equal(repairedTurn.reason, "workspace_scope_mismatch");
+  assert.equal(repairedTurn.ok, true);
+  assert.equal(repairedTurn.memory.scope.scopeKind, "git-repository");
+  assert.equal(repairedTurn.memory.scope.fallbackReason, undefined);
+  assert.equal(repairedTurn.memory.scope.effectiveUserId, "alice@quant");
+  assert.equal(
+    repositoryMemoryScopeCanUpgradeFromDegradedGit(initial.memory.scope, repairedTurn.memory.scope),
+    true,
+  );
+
+  const subsequentTurn = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "degraded-to-git",
+    workspaceRoot: nested,
+    memoraxCodeHome: home,
+    env,
+  });
+  assert.equal(subsequentTurn.ok, true);
+  assert.equal(subsequentTurn.memory.scope.repositoryKey, repairedTurn.memory.scope.repositoryKey);
 });
 
 test("case-distinct physical roots do not pass containment when the filesystem permits", async (t) => {

@@ -333,7 +333,7 @@ function memoryCliIdentityFields(memory: ConfiguredRepositoryMemory): Pick<
       workspaceScope: "bound" as const,
       ...(memory.scope.fallbackReason === "git_metadata_invalid" ? {
         workspaceScopeFallbackReason: memory.scope.fallbackReason,
-        userNotice: `Git repository metadata is invalid or incomplete. MemoraX Code is using the local folder name "${memory.scope.repositorySlug}" for memory scope, so Search and Add use "${memory.scope.effectiveUserId}". Repair the repository or restore valid .git metadata, then start a new Codex or Claude Code session to restore Git repository scope.`,
+        userNotice: `Git repository metadata is invalid or incomplete. MemoraX Code is using the local folder name "${memory.scope.repositorySlug}" for memory scope, so Search and Add use "${memory.scope.effectiveUserId}". Repair the repository or restore valid .git metadata. Later Search, Add, and automatic writeback in the same client session will automatically use the restored Git repository scope.`,
       } : {}),
     } : {
       workspaceScope: "unavailable" as const,

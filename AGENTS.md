@@ -55,8 +55,12 @@ traffic, and transcript creation.
 - A live session is pinned to its resolved workspace and repository scope.
   Linked worktrees of one repository may share repository scope; unrelated
   repositories and genuine non-Git workspaces keep separate local identity.
-  Missing, unreadable, malformed, or conflicting scope authority must not
-  silently fall back or rebind.
+  The documented direct-`.git` exception may use local-folder scope when its
+  internal metadata is malformed or incomplete, then upgrade in-session only
+  to verified Git scope for the same Base User ID and canonical workspace
+  root. Discard pending fallback writeback during that upgrade. Missing,
+  unreadable, malformed, or conflicting scope authority outside this narrow
+  exception must not silently fall back or rebind.
 - Repository resolution is read-only and must not execute Git merely to derive
   memory identity. Preserve path canonicalization, Git marker validation,
   symlink/junction containment, and fail-closed behavior.

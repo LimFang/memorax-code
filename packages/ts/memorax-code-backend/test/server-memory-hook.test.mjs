@@ -457,6 +457,51 @@ test("memory hook writes non-Git workspaces and blocks cross-workspace sessions"
   }
 });
 
+test("memory hook upgrades automatic writeback after direct Git metadata is repaired", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-hook-git-repair-"));
+  const workspace = join(root, "quant");
+  await mkdir(join(workspace, ".git"), { recursive: true });
+  const transcriptPath = await writeRollout(root, "session-git-repair", [{
+    turnId: "turn-git-repair",
+    prompt: "Repair the damaged Git metadata.",
+    reply: "The Git metadata is repaired.",
+  }]);
+  const { fetchImpl, requests } = memoraxAddFetch();
+  const controller = createCodexMemoryHookRuntime({
+    env: {
+      ...WRITEBACK_ENV,
+      MEMORAX_CODE_HOME: join(root, "home"),
+    },
+    fetchImpl,
+  });
+  try {
+    assert.deepEqual(await controller.recordTurnStart({
+      sessionId: "session-git-repair",
+      turnId: "turn-git-repair",
+      prompt: "Repair the damaged Git metadata.",
+      cwd: workspace,
+      transcriptPath,
+    }), { ok: true });
+
+    await repairGitMetadata(workspace, "quant-repository");
+    assert.deepEqual(await controller.writeback({
+      sessionId: "session-git-repair",
+      turnId: "turn-git-repair",
+      lastAssistantMessage: "The Git metadata is repaired.",
+      cwd: workspace,
+      transcriptPath,
+    }), { ok: true, scheduled: true });
+
+    await waitFor(() => requests.length === 1, "repaired Git scope did not reach MemoraX add");
+    assert.equal(requests[0].body.user_id, "user-1@quant-repository");
+    assert.equal(requests[0].body.metadata.memorax_code_memory_scope, "repository-name.v1");
+    assert.equal(requests[0].body.metadata.memorax_code_workspace, "quant-repository");
+  } finally {
+    controller.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("memory hook maps different Codex projectless task directories to Codex-General", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-hook-projectless-"));
   const firstTask = join(root, "2026-07-13", "w");
@@ -1796,6 +1841,18 @@ test("Backend memory hook endpoints keep working when Codex trace is disabled", 
   }
 });
 
+
+async function repairGitMetadata(workspace, repositoryName) {
+  const gitDir = join(workspace, ".git");
+  await mkdir(join(gitDir, "objects"), { recursive: true });
+  await mkdir(join(gitDir, "refs", "heads"), { recursive: true });
+  await writeFile(join(gitDir, "HEAD"), "ref: refs/heads/main\n", "utf8");
+  await writeFile(
+    join(gitDir, "config"),
+    `[remote "origin"]\n\turl = https://example.test/owner/${repositoryName}.git\n`,
+    "utf8",
+  );
+}
 
 async function writeRollout(root, sessionId, turns, options = {}) {
   const transcriptPath = join(root, `${sessionId}.jsonl`);

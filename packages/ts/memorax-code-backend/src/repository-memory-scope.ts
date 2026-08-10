@@ -131,6 +131,20 @@ export function repositoryMemoryScopesMatch(
     && left.fallbackReason === right.fallbackReason;
 }
 
+export function repositoryMemoryScopeCanUpgradeFromDegradedGit(
+  previous: RepositoryMemoryScope,
+  current: RepositoryMemoryScope,
+): boolean {
+  return previous.scopeKind === "local-directory"
+    && previous.identitySource === "workspace-directory"
+    && previous.fallbackReason === "git_metadata_invalid"
+    && current.scopeKind === "git-repository"
+    && current.fallbackReason === undefined
+    && previous.baseUserId === current.baseUserId
+    && previous.boundWorkspaceRoot !== undefined
+    && previous.boundWorkspaceRoot === current.boundWorkspaceRoot;
+}
+
 export async function repositoryMemoryScopeContainsWorkspace(
   scope: RepositoryMemoryScope,
   workspaceRoot: string | undefined,

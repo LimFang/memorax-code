@@ -29,6 +29,16 @@ const OTHER_REPOSITORY_SCOPE = {
   repositoryName: "other-repo",
   boundWorkspaceRoot: "/other-repo",
 };
+const DEGRADED_GIT_SCOPE = {
+  ...REPOSITORY_SCOPE,
+  fallbackReason: "git_metadata_invalid",
+};
+const REPAIRED_GIT_SCOPE = {
+  ...REPOSITORY_SCOPE,
+  repositoryKey: "repaired-git-repository-key",
+  identitySource: "origin-remote",
+  scopeKind: "git-repository",
+};
 
 test("memory writeback buffer aggregates trace turns by session at the turn limit", () => {
   const flushes = [];
@@ -161,6 +171,38 @@ test("memory writeback buffer never merges workspace scopes", () => {
   assert.deepEqual(flushes[1].decision.messages.map((message) => message.content), ["repo B first", "repo B second"]);
   assert.equal(flushes[1].flushOptions.repositoryScope.effectiveUserId, "user-1@other-repo");
   assert.notEqual(flushes[0].decision.idempotencyKey, flushes[1].decision.idempotencyKey);
+});
+
+test("memory writeback buffer discards degraded turns when the same session upgrades to Git scope", () => {
+  const runtime = createMemoryWritebackBufferRuntime();
+  const flushes = [];
+  const debugEvents = [];
+  const deps = createDeps(flushes, { debugEvents });
+  const env = bufferEnv({ maxTurns: 2, maxAgeMs: 100_000 });
+  const enqueue = (repositoryScope, idempotencyKey, content) => runtime.enqueue({
+    client: "codex",
+    sessionKey: "repair-session",
+    idempotencyKey,
+    messages: [{ role: "user", content }],
+  }, { env, repositoryScope }, deps);
+  try {
+    enqueue(DEGRADED_GIT_SCOPE, "fallback-turn", "fallback content");
+    enqueue(REPAIRED_GIT_SCOPE, "git-turn-1", "Git content first");
+
+    assert.equal(flushes.length, 0);
+    assert.equal(debugEvents.some((fields) => fields.skipReason === "buffer_scope_upgraded"), true);
+
+    enqueue(REPAIRED_GIT_SCOPE, "git-turn-2", "Git content second");
+
+    assert.equal(flushes.length, 1);
+    assert.deepEqual(flushes[0].decision.messages.map((message) => message.content), [
+      "Git content first",
+      "Git content second",
+    ]);
+    assert.strictEqual(flushes[0].flushOptions.repositoryScope, REPAIRED_GIT_SCOPE);
+  } finally {
+    runtime.close();
+  }
 });
 
 test("memory writeback buffer never merges sessions", () => {
