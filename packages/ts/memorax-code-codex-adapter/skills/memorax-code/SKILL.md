@@ -1,21 +1,20 @@
 ---
 name: memorax-code
 description: >-
-  Use this skill as the single entry point for persistent coding and
-  repository-local memory work, regardless of type, wording, or operation. Use
-  it whenever a request may involve information that should persist beyond the
-  current task,
-  knowledge remembered from prior work, repository memory,
-  reusable procedures or working rules, or durable user profile and interaction
-  preferences. This applies even when the user does not call it memory,
-  including naturally stated habits, preferences,
+  Use this skill as the single router for persistent coding and repository-local
+  memory. Invoke it whenever a request may involve prior-work knowledge,
+  repository memory, reusable procedures or rules, durable profile or
+  interaction preferences, or information worth retaining beyond the current
+  task. This applies without memory wording, including habits, preferences,
   checklists, action sequences, prerequisites, gates, exceptions, validation
   rules, communication style, preferred language, or result presentation.
-  Determine whether the request belongs to MemoraX Code coding memory,
-  repository memory, personal procedure memory, personal profile
-  memory, or no persistent memory, then route it to the appropriate operation.
-  Prefer this router over any underlying memory workflow. Ask one focused
-  question only when the memory authority remains ambiguous after routing.
+  Classify the request as coding memory, repository memory, personal procedure
+  memory, personal profile memory, or no persistent memory, then route it to the
+  matching operation. Invoking this router does not require coding-memory
+  search. If the current conversation already contains sufficient information
+  for the request, use it directly instead of searching again. Prefer this
+  router over underlying memory workflows. Ask one focused question only when
+  memory authority remains ambiguous.
 ---
 
 # MemoraX Code

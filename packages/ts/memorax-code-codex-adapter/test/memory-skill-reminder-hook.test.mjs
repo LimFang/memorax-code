@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeHookPath = join(packageRoot, "hooks", "runtime-hook.mjs");
-const MEMORY_REMINDER_CONTEXT = "MemoraX Code reminder: proactively invoke $memorax-code whenever coding memory might help, even when uncertain; when in doubt, run one focused coding-memory search for relevant prior knowledge. Also use $memorax-code for repository-scoped personal memory, and classify the authority before reading or writing.";
+const MEMORY_REMINDER_CONTEXT = "MemoraX Code reminder: proactively invoke $memorax-code whenever coding memory might help, even when uncertain; follow the skill's router to decide whether any memory operation is needed. Also use $memorax-code for repository-scoped personal memory, and classify the authority before reading or writing.";
 const PROFILE_REMINDER_CONTEXT = "MemoraX Code personal-memory reminder: Use $memorax-code when the user states a durable current-repo identity or interaction preference, asks to list or recall stored personal memory, or explicitly asks to save, update, forget, or delete it. Route reusable action sequences and work rules to procedure memory; do not store repository facts, one-off task details, or secrets.";
 
 test("manifest reuses capture-cwd for compact and keeps one serialized UserPromptSubmit memory hook", async () => {
@@ -830,7 +830,7 @@ function assertMemoryReminder(stdout) {
   const context = reminderContext(stdout);
   assert.equal(context, MEMORY_REMINDER_CONTEXT);
   assert.match(context, /proactively invoke/);
-  assert.match(context, /when in doubt, run one focused coding-memory search/);
+  assert.match(context, /follow the skill's router to decide whether any memory operation is needed/);
   assert.match(context, /repository-scoped personal memory/);
   assert.doesNotMatch(context, /repo memory/i);
   assert.match(context, /classify the authority before reading or writing/);

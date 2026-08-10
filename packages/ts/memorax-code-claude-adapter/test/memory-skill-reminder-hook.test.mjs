@@ -12,7 +12,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const hookPath = join(packageRoot, "runtime-hooks", "memory-skill-reminder.mjs");
 const captureHookPath = join(packageRoot, "runtime-hooks", "capture-cwd.mjs");
 const MEMORY_SKILL_INVOCATION = "/memorax-code-claude-adapter:memorax-code";
-const MEMORY_REMINDER_CONTEXT = `MemoraX Code reminder: proactively invoke ${MEMORY_SKILL_INVOCATION} whenever coding memory might help, even when uncertain; when in doubt, run one focused coding-memory search for relevant prior knowledge. Also use ${MEMORY_SKILL_INVOCATION} for repository-scoped personal memory, and classify the authority before reading or writing.`;
+const MEMORY_REMINDER_CONTEXT = `MemoraX Code reminder: proactively invoke ${MEMORY_SKILL_INVOCATION} whenever coding memory might help, even when uncertain; follow the skill's router to decide whether any memory operation is needed. Also use ${MEMORY_SKILL_INVOCATION} for repository-scoped personal memory, and classify the authority before reading or writing.`;
 const PERSONAL_MEMORY_REMINDER_CONTEXT = `MemoraX Code personal-memory reminder: Use ${MEMORY_SKILL_INVOCATION} when the user states a durable current-repo identity or interaction preference, asks to list or recall stored personal memory, or explicitly asks to save, update, forget, or delete it. Route reusable action sequences and work rules to procedure memory; do not store repository facts, one-off task details, or secrets.`;
 
 test("Claude memory skill metadata uses the plugin-namespaced invocation", async () => {
@@ -537,7 +537,7 @@ function assertReminder(stdout) {
   assert.equal(payload.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   assert.equal(context, MEMORY_REMINDER_CONTEXT);
   assert.match(context, /proactively invoke/);
-  assert.match(context, /when in doubt, run one focused coding-memory search/);
+  assert.match(context, /follow the skill's router to decide whether any memory operation is needed/);
   assert.match(context, /repository-scoped personal memory/);
   assert.doesNotMatch(context, /repo memory/i);
   assert.match(context, /classify the authority/);

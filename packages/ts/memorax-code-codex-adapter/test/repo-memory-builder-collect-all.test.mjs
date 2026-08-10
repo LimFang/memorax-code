@@ -391,7 +391,7 @@ test("memorax-code repo-build is app-neutral and the router declares OpenAI and 
   const openaiYaml = readFileSync(join(builderSkillRoot, "agents", "openai.yaml"), "utf8");
   const claudeYaml = readFileSync(join(builderSkillRoot, "agents", "claude.yaml"), "utf8");
 
-  assert.match(router, /single entry point for persistent coding and\s+repository-local memory work/);
+  assert.match(router, /single router for persistent coding and repository-local\s+memory/);
   assert.match(router, /### Repo Memory/);
   assert.match(router, /references\/repo-build\.md/);
   assert.match(skill, /first-time creation, full rebuilds, or full refreshes/);
