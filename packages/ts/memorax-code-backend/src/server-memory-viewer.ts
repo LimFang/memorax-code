@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { MEMORAX_ICON_DATA_URL } from "./memory-viewer-icon.js";
 import { isMemoryProjectId, UNCLASSIFIED_PROJECT_ID } from "./memory-project.js";
 import { MEMORAX_LOGO_DATA_URL } from "./memory-viewer-logo.js";
 import { memoryViewerUserHtml } from "./memory-viewer-user-html.js";
@@ -23,6 +24,10 @@ const MEMORY_VIEWER_SESSION_ACTIVITY_WINDOW_MS = 72 * 60 * 60 * 1_000;
 const MEMORY_VIEWER_ACTIVITY_CUTOFF_GRANULARITY_MS = 60_000;
 const MEMORY_VIEWER_LOGO = Buffer.from(
   MEMORAX_LOGO_DATA_URL.slice(MEMORAX_LOGO_DATA_URL.indexOf(",") + 1),
+  "base64",
+);
+const MEMORY_VIEWER_ICON = Buffer.from(
+  MEMORAX_ICON_DATA_URL.slice(MEMORAX_ICON_DATA_URL.indexOf(",") + 1),
   "base64",
 );
 
@@ -62,6 +67,15 @@ export async function handleMemoryViewerRequest(
       "x-content-type-options": "nosniff",
     });
     res.end(MEMORY_VIEWER_LOGO);
+    return true;
+  }
+  if (req.method === "GET" && url.pathname === "/memory-viewer/favicon.png") {
+    res.writeHead(200, {
+      "content-type": "image/png",
+      "cache-control": "private, max-age=86400",
+      "x-content-type-options": "nosniff",
+    });
+    res.end(MEMORY_VIEWER_ICON);
     return true;
   }
   if (req.method !== "GET" || url.pathname !== "/memory-viewer/api/summary") {
