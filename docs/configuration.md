@@ -64,7 +64,9 @@ clients detected at that time. Update-mode postinstall runs preserve a
 non-empty existing selection so a package update does not re-enable an
 integration the user intentionally disabled. If both clients are disabled,
 an update re-detects runnable clients so legacy installation-detection failures
-can recover automatically.
+can recover automatically. When this recovery newly enables Codex, an
+interactive update requests initial Hook activation; a non-interactive update
+leaves the Hooks inactive and prints the manual activation command.
 
 Client selection controls plugin and Hook lifecycle only. It does not change
 Codex or Claude Code provider settings. `--clients none` runs the Backend

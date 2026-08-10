@@ -1025,6 +1025,8 @@ test("postinstall reinstall re-detects a newly available Claude runtime", async 
 test("postinstall update re-detects a legacy empty client selection", async () => {
   const run = await runPostinstall({
     claudeAvailable: false,
+    input: "y\n",
+    interactive: true,
     memoraxCodeConfig: [
       "[clients]",
       "codex = false",
@@ -1039,6 +1041,10 @@ test("postinstall update re-detects a legacy empty client selection", async () =
     assert.match(run.result.stderr, /Claude Code runtime was not detected; skipping its adapter setup/);
     assert.match(run.result.stderr, /Detected supported client runtimes\. Configuring MemoraX Code for Codex only\./);
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
+    assert.match(run.result.stderr, /Activate and trust MemoraX Code Codex Adapter hooks now\? \[Y\/n\]/);
+    assert.match(run.log, /^memorax-code codex-plugin activate --yes$/m);
+    assert.doesNotMatch(run.log, /^memorax-code codex-plugin hooks .*--json$/m);
+    assert.doesNotMatch(run.log, /^memorax-code codex-plugin trust-hooks /m);
     assert.match(run.log, /^memorax-code start --clients codex$/m);
     assert.match(run.log, /^memorax-code status --clients codex$/m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");

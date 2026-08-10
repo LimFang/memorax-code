@@ -114,7 +114,8 @@ if (memoraxConfigResult === "configured") {
 }
 const codexClientEnabled = installClients.includes("codex");
 const claudeClientEnabled = installClients.includes("claude");
-const codexHooksBeforeUpdate = codexClientEnabled && updatePostinstall
+const codexClientNewlyEnabled = codexClientEnabled && redetectEmptyPreviousClients;
+const codexHooksBeforeUpdate = codexClientEnabled && updatePostinstall && !codexClientNewlyEnabled
   ? inspectCodexPluginHooksForUpdate()
   : undefined;
 const result = codexClientEnabled
@@ -126,8 +127,13 @@ if (codexClientEnabled && result.status !== 0 && process.env.npm_lifecycle_event
 }
 
 if (codexClientEnabled && result.status === 0) {
-  if (updatePostinstall) await maybeTrustUpdatedCodexPluginHooks(scriptedAnswers, codexHooksBeforeUpdate);
-  else await maybeActivateCodexPluginHooks(scriptedAnswers);
+  if (codexClientNewlyEnabled) {
+    await maybeActivateCodexPluginHooks(scriptedAnswers, { updatePrompt: true });
+  } else if (updatePostinstall) {
+    await maybeTrustUpdatedCodexPluginHooks(scriptedAnswers, codexHooksBeforeUpdate);
+  } else {
+    await maybeActivateCodexPluginHooks(scriptedAnswers);
+  }
 }
 const skipCodexAdapter = !codexClientEnabled;
 const skipClaudeAdapter = !claudeClientEnabled;
@@ -474,8 +480,8 @@ function warnUpdatedHookTrustSkipped(message) {
   logRed("Review and authorize the current MemoraX Code Codex Hooks with `memorax-code codex-plugin trust-hooks`.");
 }
 
-async function maybeActivateCodexPluginHooks(scriptedAnswers) {
-  if (!canPrompt()) {
+async function maybeActivateCodexPluginHooks(scriptedAnswers, { updatePrompt = false } = {}) {
+  if (!(updatePrompt ? canPromptForHookUpdate() : canPrompt())) {
     log("Codex hook activation was not prompted. Run `memorax-code codex-plugin activate --yes` later to activate and trust MemoraX Code Codex Adapter hooks.");
     return "skipped";
   }
