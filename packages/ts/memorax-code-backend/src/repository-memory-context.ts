@@ -25,6 +25,15 @@ export type ConfiguredRepositoryMemoryResult =
     error: string;
   };
 
+export function resolvedRepoMemoryWorktree(
+  result: ConfiguredRepositoryMemoryResult,
+): string | undefined {
+  if (!result.ok || !result.memory.scope) return undefined;
+  return repositoryMemoryScopeKind(result.memory.scope) === "git-repository"
+    ? result.memory.scope.boundWorkspaceRoot
+    : undefined;
+}
+
 type RepositoryMemorySessionBinding = {
   scope: RepositoryMemoryScope;
   mismatch: boolean;

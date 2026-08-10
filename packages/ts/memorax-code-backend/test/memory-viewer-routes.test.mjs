@@ -36,6 +36,13 @@ test("memory viewer user route renders the compact summary surface", async () =>
     assert.match(html, /memory-viewer\/api\/summary/);
     assert.match(html, /async function poll\(\)/);
     assert.match(html, /setTimeout\(poll,10000\)/);
+    assert.match(html, /preparing:'Generating'/);
+    assert.match(html, /preparing:'生成中'/);
+    assert.match(html, /bundle_missing:'Generating repository knowledge'/);
+    assert.match(html, /bundle_missing:'正在生成仓库知识'/);
+    assert.match(html, /displayStatus=state\.reason==='bundle_missing'\?'preparing':state\.status/);
+    assert.match(html, /className='state-dot '\+displayStatus/);
+    assert.match(html, /current\.repoStates\[displayStatus\]/);
     assert.ok(Buffer.byteLength(html) < 64 * 1024);
     const script = html.match(/<script>([\s\S]+)<\/script>/)?.[1];
     assert.ok(script);

@@ -52,6 +52,12 @@ export type ClaudeTurnStartCommand = MemoryHookCommandBase<"claude-code"> & Read
 
 export type TurnStartCommand = CodexTurnStartCommand | ClaudeTurnStartCommand;
 
+export type MemoryHookTurnStartResult = Readonly<{
+  ok: true;
+  additionalContext?: string;
+  repoMemoryWorktree?: string;
+}>;
+
 export type CodexWritebackCommand = MemoryHookCommandBase<"codex"> & Readonly<{
   turnId?: string;
   lastAssistantMessage: string;

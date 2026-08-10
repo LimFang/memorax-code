@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createBackendState } from "../dist/backend-state.js";
@@ -11,6 +11,8 @@ import { clientTracePaths, tracePaths } from "../dist/trace-config.js";
 import { listen } from "./helpers.mjs";
 
 const TEST_WORKSPACE = fileURLToPath(new URL("..", import.meta.url));
+const TEST_REPO_ROOT = resolve(TEST_WORKSPACE, "../../..");
+const GIT_TURN_START_RESULT = { ok: true, repoMemoryWorktree: TEST_REPO_ROOT };
 const TEST_MEMORAX_CODE_HOME = join(tmpdir(), `memorax-code-hook-scope-${process.pid}`);
 const WRITEBACK_ENV = {
   MEMORAX_CODE_HOME: TEST_MEMORAX_CODE_HOME,
@@ -52,6 +54,7 @@ test("Codex Hook retrieves automatic memory once per exact turn", async () => {
     });
     assert.equal(first.ok, true);
     assert.match(first.additionalContext, /Keep malformed input fail-closed/);
+    assert.equal(first.repoMemoryWorktree, TEST_REPO_ROOT);
 
     assert.deepEqual(await controller.recordTurnStart({
       sessionId: "session-retrieval",
@@ -59,7 +62,7 @@ test("Codex Hook retrieves automatic memory once per exact turn", async () => {
       prompt: "Recall the parser boundary.",
       cwd: TEST_WORKSPACE,
       transcriptPath,
-    }), { ok: true });
+    }), GIT_TURN_START_RESULT);
     assert.deepEqual(await controller.writeback({
       sessionId: "session-retrieval",
       turnId: "turn-retrieval",
@@ -73,13 +76,13 @@ test("Codex Hook retrieves automatic memory once per exact turn", async () => {
       prompt: "Recall the parser boundary.",
       cwd: TEST_WORKSPACE,
       transcriptPath,
-    }), { ok: true });
+    }), GIT_TURN_START_RESULT);
     assert.deepEqual(await controller.recordTurnStart({
       sessionId: "session-without-turn-id",
       prompt: "Do not retrieve without an exact turn id.",
       cwd: TEST_WORKSPACE,
       transcriptPath,
-    }), { ok: true });
+    }), GIT_TURN_START_RESULT);
 
     assert.equal(requests.length, 1);
     assert.equal(requests[0].body.query, "Recall the parser boundary.");
@@ -868,7 +871,7 @@ test("memory hook turn-start trace failures do not create unhandled rejections",
       prompt: "Trace write should fail open.",
       cwd: TEST_WORKSPACE,
       transcriptPath: "/tmp/trace-failure.jsonl",
-    }), { ok: true });
+    }), GIT_TURN_START_RESULT);
     await delay(50);
     assert.deepEqual(unhandled.errors, []);
   } finally {
@@ -940,7 +943,7 @@ test("Backend memory hook endpoints record and write back a turn", async () => {
       }),
     });
     assert.equal(start.status, 200);
-    assert.deepEqual(await start.json(), { ok: true });
+    assert.deepEqual(await start.json(), GIT_TURN_START_RESULT);
 
     const writeback = await originalFetch(`${url}/memory/writeback`, {
       method: "POST",
@@ -1370,8 +1373,8 @@ test("memory hook deduplicates lifecycle events and appends late rollout materia
     transcriptPath,
   };
   try {
-    assert.deepEqual(await controller.recordTurnStart(turnStart), { ok: true });
-    assert.deepEqual(await controller.recordTurnStart(turnStart), { ok: true });
+    assert.deepEqual(await controller.recordTurnStart(turnStart), GIT_TURN_START_RESULT);
+    assert.deepEqual(await controller.recordTurnStart(turnStart), GIT_TURN_START_RESULT);
     assert.deepEqual(await controller.writeback(writeback), {
       ok: true,
       scheduled: false,
@@ -1430,7 +1433,7 @@ test("memory hook writeback records turn_end with cached trace context when Stop
       prompt: "Prompt with paths.",
       cwd: TEST_WORKSPACE,
       transcriptPath,
-    }), { ok: true });
+    }), GIT_TURN_START_RESULT);
 
     const result = await controller.writeback({
       sessionId: "session-turn-end-fallback",

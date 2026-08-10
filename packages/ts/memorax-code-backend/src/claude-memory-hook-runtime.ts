@@ -15,6 +15,7 @@ import {
 import type {
   ClaudeTurnStartCommand,
   ClaudeWritebackCommand,
+  MemoryHookTurnStartResult,
 } from "./memory-hook-command.js";
 import type { MemoryDiagnosticLogger, MemoryObservabilityHook } from "./memory-observability.js";
 import {
@@ -24,6 +25,7 @@ import {
 } from "./memory-turn-coordinator.js";
 import {
   createRepositoryMemorySessionRuntime,
+  resolvedRepoMemoryWorktree,
   type ConfiguredRepositoryMemoryResult,
   type RepositoryMemorySessionRuntime,
 } from "./repository-memory-context.js";
@@ -79,7 +81,7 @@ export type ClaudeMemoryHookRuntimeOptions = {
 };
 
 export type ClaudeMemoryHookRuntime = {
-  recordTurnStart(command: ClaudeTurnStartCommand): Promise<{ ok: true; additionalContext?: string }>;
+  recordTurnStart(command: ClaudeTurnStartCommand): Promise<MemoryHookTurnStartResult>;
   writeback(command: ClaudeWritebackCommand): Promise<ClaudeMemoryHookWritebackResult>;
   size(): number;
   close(): void;
@@ -132,6 +134,7 @@ export function createClaudeMemoryHookRuntime(
       await reconcilePreviousInterruptedTurn(turnCoordinator, turn, options, now);
       turnCoordinator.pruneExpired();
       const repositoryMemory = await resolveHookRepositoryMemory(turn, options, repositoryMemorySession);
+      const repoMemoryWorktree = resolvedRepoMemoryWorktree(repositoryMemory);
       turnCoordinator.recordTurnStart({
         client: CLAUDE_MEMORY_TURN_CLIENT,
         sessionId: turn.sessionId,
@@ -179,7 +182,10 @@ export function createClaudeMemoryHookRuntime(
         turn.sessionId,
         turn.promptId,
       )) {
-        return { ok: true };
+        return {
+          ok: true,
+          ...(repoMemoryWorktree ? { repoMemoryWorktree } : {}),
+        };
       }
       const retrieval = await retrieveAutomaticMemoryContext({
         diagnosticLogger: options.diagnosticLogger,
@@ -194,6 +200,7 @@ export function createClaudeMemoryHookRuntime(
       });
       return {
         ok: true,
+        ...(repoMemoryWorktree ? { repoMemoryWorktree } : {}),
         ...(retrieval.context ? { additionalContext: retrieval.context } : {}),
       };
     },

@@ -39,6 +39,9 @@ Please allow time for triage and remediation before public disclosure.
 - Hook, lifecycle, connection, PID, token, session, and workspace authority
   records are security-sensitive local state. Do not hand-edit or publish
   them.
+- Initial Repo Memory builds use only the Git worktree returned by an
+  authenticated Backend turn-start request. Backend or workspace-scope
+  failures skip the build; client Hooks do not fall back to their local `cwd`.
 
 ### MemoraX memory traffic
 

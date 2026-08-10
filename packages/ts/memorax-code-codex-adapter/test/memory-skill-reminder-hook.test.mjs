@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -339,6 +339,62 @@ test("combined memory hook records turn start before each emitted developer remi
       "turn-3:start-responded",
       "turn-3:reminder-received",
     ]);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("combined memory hook starts Repo Memory build for the Backend-authorized worktree", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-codex-auto-build-"));
+  const memoraxCodeHome = join(root, "memorax-code");
+  const repo = join(root, "repo");
+  const pluginRoot = join(root, "plugin");
+  const jobLog = join(root, "repo-memory-job.json");
+  const server = createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(req.url === "/memory/turn-start"
+      ? { ok: true, repoMemoryWorktree: repo }
+      : { ok: true }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  try {
+    await Promise.all([
+      mkdir(repo, { recursive: true }),
+      mkdir(join(pluginRoot, "hooks"), { recursive: true }),
+      writeRegistry(memoraxCodeHome, {
+        "native-thread": {
+          key: "native-thread",
+          codexSessionId: "native-thread",
+        },
+      }),
+    ]);
+    await writeFile(join(pluginRoot, "hooks", "repo-memory-job.mjs"), [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(jobLog)}, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }));`,
+      "",
+    ].join("\n"));
+
+    const result = await runHook({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "native-thread",
+      turn_id: "turn-auto-build",
+      transcript_path: "/tmp/native-thread.jsonl",
+      cwd: repo,
+      workspace_kind: "git",
+      prompt: "Build missing Repo Memory.",
+    }, {
+      MEMORAX_CODE_BACKEND_URL: `http://127.0.0.1:${address.port}`,
+      MEMORAX_CODE_HOME: memoraxCodeHome,
+      PLUGIN_ROOT: pluginRoot,
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(await waitForFile(jobLog)), {
+      args: ["maintain", "--repo", repo],
+      cwd: await realpath(repo),
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(root, { recursive: true, force: true });
@@ -873,4 +929,17 @@ function runHookScript(component, input, env = {}) {
     child.on("close", (code) => resolve({ code, stdout, stderr }));
     child.stdin.end(`${JSON.stringify(input)}\n`);
   });
+}
+
+async function waitForFile(path) {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    try {
+      return await readFile(path, "utf8");
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`timed out waiting for ${path}`);
 }

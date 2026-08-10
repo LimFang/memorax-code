@@ -5,6 +5,7 @@ import {
 } from "../../memorax-code-adapter-common/src/hooks/memory-skill-reminder-hook.mjs";
 import { resolveBackendConnection } from "../../memorax-code-adapter-common/src/backend-connection.mjs";
 import { readStdinJson, stringOption } from "../../memorax-code-adapter-common/src/config-utils.mjs";
+import { scheduleMissingRepoMemoryBuild } from "../../memorax-code-adapter-common/src/repo-memory/repo-memory-auto-build.mjs";
 import { isRepoMemoryJobWorker } from "../../memorax-code-adapter-common/src/repo-memory/repo-memory-job-context.mjs";
 import { buildRepoProcedureMemoryContext } from "../../memorax-code-adapter-common/src/repo-memory/repo-procedure-memory-context.mjs";
 import { buildRepoUserProfilePreferencesContext } from "../../memorax-code-adapter-common/src/repo-memory/repo-user-profile-context.mjs";
@@ -25,6 +26,10 @@ try {
   const turnStart = turnStartBody(input);
   if (turnStart) {
     const turnStartResult = await recordTurnStart(turnStart);
+    scheduleMissingRepoMemoryBuild(turnStartResult.repoMemoryWorktree, {
+      debugEnv: "MEMORAX_CODE_CODEX_HOOK_DEBUG",
+      pluginRoot: process.env.PLUGIN_ROOT,
+    });
     const normalizedInput = turnStart.workspaceKind
       ? { ...input, workspaceKind: turnStart.workspaceKind }
       : input;
@@ -69,6 +74,7 @@ async function recordTurnStart(body) {
     return {
       recorded: true,
       additionalContext: stringValue(response?.additionalContext),
+      repoMemoryWorktree: stringValue(response?.repoMemoryWorktree),
     };
   } catch (error) {
     debugHookError(error);

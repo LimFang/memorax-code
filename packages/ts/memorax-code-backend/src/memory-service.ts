@@ -14,6 +14,7 @@ import {
   createRepositoryMemorySessionRuntime,
 } from "./repository-memory-context.js";
 import type {
+  MemoryHookTurnStartResult,
   TurnStartCommand,
   WritebackCommand,
 } from "./memory-hook-command.js";
@@ -28,7 +29,7 @@ type MemoryHookWritebackResult =
   | ClaudeMemoryHookWritebackResult;
 
 export type MemoryService = {
-  recordTurnStart(command: TurnStartCommand): Promise<{ ok: true; additionalContext?: string }>;
+  recordTurnStart(command: TurnStartCommand): Promise<MemoryHookTurnStartResult>;
   writebackTurn(command: WritebackCommand): Promise<MemoryHookWritebackResult>;
   drain(): Promise<void>;
   close(): void;
