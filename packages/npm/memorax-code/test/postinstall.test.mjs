@@ -999,6 +999,29 @@ test("postinstall fresh install auto-detects Codex and skips an unavailable Clau
   }
 });
 
+test("postinstall reinstall re-detects a newly available Claude runtime", async () => {
+  const run = await runPostinstall({
+    memoraxCodeConfig: [
+      "[clients]",
+      "codex = true",
+      "claude = false",
+      "",
+    ].join("\n"),
+  });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.log, /^codex --version$/m);
+    assert.match(run.log, /^claude --version$/m);
+    assert.match(run.result.stderr, /Detected supported client runtimes\. Configuring MemoraX Code for Codex and Claude Code\./);
+    assert.match(run.log, /^memorax-code start --clients all$/m);
+    assert.match(run.log, /^memorax-code status --clients all$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(config, /\[clients\]\ncodex = true\nclaude = true/);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
 test("postinstall update preserves client intent while skipping an uninstalled Claude runtime", async () => {
   const run = await runPostinstall({
     claudeAvailable: false,

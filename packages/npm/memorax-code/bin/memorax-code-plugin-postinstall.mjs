@@ -52,6 +52,7 @@ const scriptedAnswers = (canPrompt() || canPromptForHookUpdate()) && process.std
   ? parseScriptedAnswers(readFileSync(0, "utf8"))
   : undefined;
 const previousClients = readPersistedClientSelection();
+const preservePreviousClients = updatePostinstall && previousClients !== undefined;
 if (seedMissingMemoraxCodeConfig() === "failed") {
   printPostinstallSummary("not-verified");
   process.exit(0);
@@ -70,7 +71,7 @@ try {
   process.exit(0);
 }
 runCommonPreflight();
-const requestedClients = previousClients ?? ["codex", "claude"];
+const requestedClients = preservePreviousClients ? previousClients : ["codex", "claude"];
 const codexPreflight = requestedClients.includes("codex") && !skipCodexPluginInstall
   ? runCodexPreflight()
   : { ok: true, pluginCache: { marketplaceName: CLI_MARKETPLACE_NAME, versions: [] } };
@@ -81,8 +82,8 @@ const installClients = requestedClients.filter((client) => {
   if (client === "codex") return !skipCodexPluginInstall && codexPreflight.ok;
   return !skipClaudeAdapterInstall && claudePreflight.ok;
 });
-const selectedClients = previousClients ?? installClients;
-if (previousClients) {
+const selectedClients = preservePreviousClients ? previousClients : installClients;
+if (preservePreviousClients) {
   log(clientSelectionMessage(previousClients));
 } else {
   log(detectedClientMessage(installClients));

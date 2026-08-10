@@ -59,6 +59,11 @@ disabled. The command-line override is:
 --clients codex|claude|codex,claude|all|none
 ```
 
+A normal npm install or reinstall refreshes `[clients]` from the runnable
+clients detected at that time. Update-mode postinstall runs preserve the
+existing selection so a package update does not re-enable an integration the
+user intentionally disabled.
+
 Client selection controls plugin and Hook lifecycle only. It does not change
 Codex or Claude Code provider settings. `--clients none` runs the Backend
 without managing either client integration.
