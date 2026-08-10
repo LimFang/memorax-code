@@ -71,6 +71,8 @@ anchors: stable/source/path' \
 
 If add fails, report the exact failure and do not retry automatically, bypass the CLI, or call MemoraX directly.
 
+If a successful Add result reports `workspaceScopeFallbackReason: git_metadata_invalid`, malformed or incomplete metadata inside a direct `.git` directory was downgraded to the normalized local folder scope. Add has already been submitted with the reported `effectiveUserId`. Present its `userNotice` once without pausing the current task or asking the user to repair Git first, then continue the current task. After the repository or `.git` metadata is repaired, the user must start a new Codex or Claude Code session to restore Git repository scope.
+
 If `memorax-cli add` reports `workspace_scope_mismatch` or `workspace_scope_unavailable`, do not bypass the scope. Do not change the CLI working directory and retry. Tell the user that the memory was not submitted and no request was sent to MemoraX, then present the CLI's `userAction` in natural language. Continue the current task using only live code and documentation.
 
 ## Exclusions

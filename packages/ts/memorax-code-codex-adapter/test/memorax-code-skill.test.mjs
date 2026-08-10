@@ -73,6 +73,8 @@ test("memorax-code references keep authority and operation boundaries explicit",
   assert.match(memoraxSearch, /search was not executed and no request was sent to MemoraX/);
   assert.match(memoraxSearch, /present the CLI's `userAction`/);
   assert.match(memoraxSearch, /Do not change the CLI working directory and retry/);
+  assert.match(memoraxSearch, /`workspaceScopeFallbackReason: git_metadata_invalid`/);
+  assert.match(memoraxSearch, /Present its `userNotice` once without pausing the current task/);
   assert.doesNotMatch(memoraxSearch, /--query-file/);
   assert.match(memoraxAdd, /CODE_AGENT_MEMORY/);
   assert.match(memoraxAdd, /Route user-owned ordered actions/);
@@ -84,6 +86,8 @@ test("memorax-code references keep authority and operation boundaries explicit",
   assert.match(memoraxAdd, /memory was not submitted and no request was sent to MemoraX/);
   assert.match(memoraxAdd, /present the CLI's `userAction`/);
   assert.match(memoraxAdd, /Do not change the CLI working directory and retry/);
+  assert.match(memoraxAdd, /`workspaceScopeFallbackReason: git_metadata_invalid`/);
+  assert.match(memoraxAdd, /Present its `userNotice` once without pausing the current task/);
   assert.doesNotMatch(memoraxAdd, /--memory-file/);
   assert.match(repoRead, /## Retrieval Budget/);
   assert.match(repoRead, /Do not read repo memory again after `maintain` returns/);

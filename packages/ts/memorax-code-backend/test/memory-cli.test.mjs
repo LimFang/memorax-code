@@ -178,11 +178,11 @@ test("memory CLI rejects a nested repository outside the current turn scope", as
   assert.equal(requestCount, 0);
 });
 
-test("memory CLI explains malformed Git scope failures before search or add sends a request", async () => {
+test("memory CLI falls back to the folder scope when direct Git metadata is malformed", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-cli-invalid-git-"));
-  const workspace = join(root, "workspace");
+  const workspace = join(root, "quant");
   await mkdir(join(workspace, ".git"), { recursive: true });
-  let requestCount = 0;
+  const requests = [];
   const env = {
     MEMORAX_CODE_HOME: join(root, "memorax-code-home"),
     MEMORAX_CODE_MEMORY_CLI_ADD_ENABLED: "true",
@@ -193,13 +193,20 @@ test("memory CLI explains malformed Git scope failures before search or add send
   const options = {
     cwd: workspace,
     env,
-    fetchImpl: async () => {
-      requestCount += 1;
-      return new Response("{}", { status: 200 });
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), body: JSON.parse(init.body) });
+      const data = String(url).endsWith("/v1/memories/add")
+        ? { task_id: "fallback-add", status: "queued" }
+        : { data: [] };
+      return new Response(JSON.stringify({ success: true, data }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     },
   };
 
-  const search = await runMemoryCli(["search", "--query", "must fail closed"], options);
+  const status = await runMemoryCli(["status"], options);
+  const search = await runMemoryCli(["search", "--query", "use folder fallback"], options);
   const add = await runMemoryCli([
     "add",
     "--memory",
@@ -210,16 +217,20 @@ test("memory CLI explains malformed Git scope failures before search or add send
     "Record a verified scope invariant.",
   ], options);
 
-  for (const result of [search, add]) {
-    assert.equal(result.ok, false);
-    assert.equal(result.workspaceScope, "unavailable");
-    assert.equal(result.workspaceScopeReason, "workspace_scope_unavailable");
-    assert.equal(
-      result.userAction,
-      "Start a new Codex or Claude Code session from the target repository or local workspace. If the problem continues, make sure its .git metadata is readable and valid.",
-    );
+  for (const result of [status, search, add]) {
+    assert.equal(result.ok, true);
+    assert.equal(result.workspaceScope, "bound");
+    assert.equal(result.scopeKind, "local-directory");
+    assert.equal(result.workspace, "quant");
+    assert.equal(result.effectiveUserId, "user-1@quant");
+    assert.equal(result.workspaceScopeFallbackReason, "git_metadata_invalid");
+    assert.match(result.userNotice, /Git repository metadata is invalid or incomplete/);
+    assert.match(result.userNotice, /local folder name "quant"/);
+    assert.match(result.userNotice, /Search and Add use "user-1@quant"/);
   }
-  assert.equal(requestCount, 0);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].body.user_id, "user-1@quant");
+  assert.equal(requests[1].body.user_id, "user-1@quant");
 });
 
 test("memory CLI gives the same scope recovery guidance for a Claude turn", async () => {

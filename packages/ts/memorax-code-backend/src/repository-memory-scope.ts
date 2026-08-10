@@ -13,6 +13,7 @@ export type RepositoryMemoryIdentitySource =
   | "codex-projectless";
 
 export type RepositoryMemoryScopeKind = "git-repository" | "local-directory" | "codex-projectless";
+export type RepositoryMemoryScopeFallbackReason = "git_metadata_invalid";
 
 export type RepositoryMemoryScope = Readonly<{
   schemaVersion: "workspace-memory-scope.v1";
@@ -23,6 +24,7 @@ export type RepositoryMemoryScope = Readonly<{
   repositoryName: string;
   identitySource: RepositoryMemoryIdentitySource;
   scopeKind: RepositoryMemoryScopeKind;
+  fallbackReason?: RepositoryMemoryScopeFallbackReason;
   boundWorkspaceRoot?: string;
 }>;
 
@@ -94,7 +96,10 @@ export async function resolveRepositoryMemoryScope(input: {
       }),
     };
   }
-  const workspaceName = sanitizeWorkspaceName(basename(workspace));
+  const localWorkspace = gitRepository.kind === "degraded"
+    ? gitRepository.workspaceRoot
+    : workspace;
+  const workspaceName = sanitizeWorkspaceName(basename(localWorkspace));
   if (!workspaceName) {
     return {
       ok: false,
@@ -106,11 +111,12 @@ export async function resolveRepositoryMemoryScope(input: {
     ok: true,
     scope: memoryScope({
       baseUserId,
-      repositoryKey: identityKey("workspace-directory", workspace),
+      repositoryKey: identityKey("workspace-directory", localWorkspace),
       repositorySlug: workspaceName,
       identitySource: "workspace-directory",
       scopeKind: "local-directory",
-      boundWorkspaceRoot: workspace,
+      fallbackReason: gitRepository.kind === "degraded" ? gitRepository.reason : undefined,
+      boundWorkspaceRoot: localWorkspace,
     }),
   };
 }
@@ -121,7 +127,8 @@ export function repositoryMemoryScopesMatch(
 ): boolean {
   return left.repositoryKey === right.repositoryKey
     && left.baseUserId === right.baseUserId
-    && left.effectiveUserId === right.effectiveUserId;
+    && left.effectiveUserId === right.effectiveUserId
+    && left.fallbackReason === right.fallbackReason;
 }
 
 export async function repositoryMemoryScopeContainsWorkspace(
@@ -138,6 +145,11 @@ export async function repositoryMemoryScopeContainsWorkspace(
       && gitRepository.repositoryName === scope.repositorySlug;
   }
   if (!pathContains(scope.boundWorkspaceRoot, workspace)) return false;
+  if (scope.scopeKind === "local-directory" && scope.fallbackReason === "git_metadata_invalid") {
+    const gitRepository = await resolveGitRepository(workspace);
+    return gitRepository.kind === "degraded"
+      && identityKey("workspace-directory", gitRepository.workspaceRoot) === scope.repositoryKey;
+  }
   return scope.scopeKind !== "local-directory"
     || !await hasGitMarkerBetween(workspace, scope.boundWorkspaceRoot);
 }
@@ -152,6 +164,7 @@ function memoryScope(input: {
   repositorySlug: string;
   identitySource: RepositoryMemoryIdentitySource;
   scopeKind: RepositoryMemoryScopeKind;
+  fallbackReason?: RepositoryMemoryScopeFallbackReason;
   boundWorkspaceRoot?: string;
 }): RepositoryMemoryScope {
   return {
@@ -163,6 +176,7 @@ function memoryScope(input: {
     repositoryName: input.repositorySlug,
     identitySource: input.identitySource,
     scopeKind: input.scopeKind,
+    ...(input.fallbackReason ? { fallbackReason: input.fallbackReason } : {}),
     ...(input.boundWorkspaceRoot ? { boundWorkspaceRoot: input.boundWorkspaceRoot } : {}),
   };
 }
@@ -181,6 +195,11 @@ type GitRepositoryResolution =
   | { kind: "none" }
   | { kind: "invalid" }
   | {
+    kind: "degraded";
+    reason: RepositoryMemoryScopeFallbackReason;
+    workspaceRoot: string;
+  }
+  | {
     kind: "repository";
     commonDir: string;
     repositoryName: string;
@@ -197,8 +216,11 @@ async function resolveGitRepository(workspace: string): Promise<GitRepositoryRes
   }
   if (!marker) return { kind: "none" };
 
+  let directDirectoryMarker = false;
   try {
-    const gitDir = await resolveGitDir(marker.path);
+    const resolvedGitDir = await resolveGitDir(marker.path);
+    directDirectoryMarker = resolvedGitDir.directDirectoryMarker;
+    const gitDir = resolvedGitDir.path;
     await validateGitHead(gitDir);
     const commonDir = await resolveGitCommonDir(gitDir);
     await validateGitCommonDir(commonDir);
@@ -211,7 +233,14 @@ async function resolveGitRepository(workspace: string): Promise<GitRepositoryRes
       identitySource: remoteName ? "origin-remote" : "git-common-dir",
       workspaceRoot: marker.workspaceRoot,
     };
-  } catch {
+  } catch (error) {
+    if (directDirectoryMarker && canFallbackFromDirectGitDirectory(error)) {
+      return {
+        kind: "degraded",
+        reason: "git_metadata_invalid",
+        workspaceRoot: marker.workspaceRoot,
+      };
+    }
     return { kind: "invalid" };
   }
 }
@@ -250,17 +279,27 @@ async function hasGitMarkerBetween(workspace: string, boundary: string): Promise
   }
 }
 
-async function resolveGitDir(marker: string): Promise<string> {
-  if ((await fs.lstat(marker)).isSymbolicLink()) throw new Error("symbolic Git metadata marker is not allowed");
-  const markerStat = await fs.stat(marker);
-  if (markerStat.isDirectory()) return await canonicalDirectory(marker);
-  if (!markerStat.isFile()) throw new Error("invalid Git metadata marker");
+async function resolveGitDir(marker: string): Promise<{ path: string; directDirectoryMarker: boolean }> {
+  const markerStat = await fs.lstat(marker);
+  if (markerStat.isSymbolicLink()) {
+    throw new GitMetadataValidationError("symbolic Git metadata marker is not allowed");
+  }
+  if (markerStat.isDirectory()) {
+    return {
+      path: await canonicalDirectory(marker),
+      directDirectoryMarker: true,
+    };
+  }
+  if (!markerStat.isFile()) throw new GitMetadataValidationError("invalid Git metadata marker");
 
   const line = await readSingleLine(marker, MAX_GIT_POINTER_BYTES);
   const match = /^gitdir:[ \t]*(.+)$/i.exec(line);
   const gitDir = match?.[1]?.trim();
-  if (!gitDir) throw new Error("invalid Git metadata pointer");
-  return await canonicalDirectory(resolveMetadataPath(dirname(marker), gitDir));
+  if (!gitDir) throw new GitMetadataValidationError("invalid Git metadata pointer");
+  return {
+    path: await canonicalDirectory(resolveMetadataPath(dirname(marker), gitDir)),
+    directDirectoryMarker: false,
+  };
 }
 
 async function resolveGitCommonDir(gitDir: string): Promise<string> {
@@ -272,35 +311,37 @@ async function resolveGitCommonDir(gitDir: string): Promise<string> {
     throw error;
   }
   const commonDir = (await readSingleLine(path, MAX_GIT_POINTER_BYTES)).trim();
-  if (!commonDir) throw new Error("invalid Git common directory pointer");
+  if (!commonDir) throw new GitMetadataValidationError("invalid Git common directory pointer");
   return await canonicalDirectory(resolveMetadataPath(gitDir, commonDir));
 }
 
 function resolveMetadataPath(base: string, value: string): string {
-  if (value.includes("\0")) throw new Error("invalid Git metadata path");
+  if (value.includes("\0")) throw new GitMetadataValidationError("invalid Git metadata path");
   return isAbsolute(value) ? value : resolve(base, value);
 }
 
 async function canonicalDirectory(path: string): Promise<string> {
   const canonical = await fs.realpath(path);
-  if (!(await fs.stat(canonical)).isDirectory()) throw new Error("Git metadata path is not a directory");
+  if (!(await fs.stat(canonical)).isDirectory()) {
+    throw new GitMetadataValidationError("Git metadata path is not a directory");
+  }
   return canonical;
 }
 
 async function validateGitHead(gitDir: string): Promise<void> {
   const head = (await readSingleLine(join(gitDir, "HEAD"), MAX_GIT_POINTER_BYTES)).trim();
   if (!/^ref: refs\/[^\0\r\n]+$/.test(head) && !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(head)) {
-    throw new Error("invalid Git HEAD");
+    throw new GitMetadataValidationError("invalid Git HEAD");
   }
 }
 
 async function validateGitCommonDir(commonDir: string): Promise<void> {
   if (!(await fs.stat(join(commonDir, "objects"))).isDirectory()) {
-    throw new Error("invalid Git objects directory");
+    throw new GitMetadataValidationError("invalid Git objects directory");
   }
   const hasRefs = await isDirectory(join(commonDir, "refs"));
   const hasReftable = await isDirectory(join(commonDir, "reftable"));
-  if (!hasRefs && !hasReftable) throw new Error("invalid Git references directory");
+  if (!hasRefs && !hasReftable) throw new GitMetadataValidationError("invalid Git references directory");
 }
 
 async function isDirectory(path: string): Promise<boolean> {
@@ -317,17 +358,19 @@ async function readSingleLine(path: string, maxBytes: number): Promise<string> {
   if (value.endsWith("\r\n")) value = value.slice(0, -2);
   else if (value.endsWith("\n")) value = value.slice(0, -1);
   if (!value || value.includes("\0") || value.includes("\r") || value.includes("\n")) {
-    throw new Error("invalid single-line Git metadata");
+    throw new GitMetadataValidationError("invalid single-line Git metadata");
   }
   return value;
 }
 
 async function readBoundedTextFile(path: string, maxBytes: number): Promise<string> {
   const file = await fs.stat(path);
-  if (!file.isFile() || file.size > maxBytes) throw new Error("invalid Git metadata file");
+  if (!file.isFile() || file.size > maxBytes) {
+    throw new GitMetadataValidationError("invalid Git metadata file");
+  }
   const value = await fs.readFile(path, "utf8");
   if (Buffer.byteLength(value, "utf8") > maxBytes || value.includes("\0")) {
-    throw new Error("invalid Git metadata file");
+    throw new GitMetadataValidationError("invalid Git metadata file");
   }
   return value;
 }
@@ -357,7 +400,7 @@ function parseDirectRemoteUrls(source: string): Map<string, string> {
     }
     if (!remote) continue;
     const assignment = /^[ \t]*([A-Za-z][A-Za-z0-9-]*)[ \t]*(?:=[ \t]*)?(.*)$/.exec(line);
-    if (!assignment) throw new Error("invalid Git config assignment");
+    if (!assignment) throw new GitMetadataValidationError("invalid Git config assignment");
     if (assignment[1]?.toLowerCase() !== "url") continue;
     remotes.set(remote, parseGitConfigValue(assignment[2] ?? ""));
   }
@@ -377,7 +420,7 @@ function logicalGitConfigLines(source: string): string[] {
       pending = "";
     }
   }
-  if (pending) throw new Error("unterminated Git config continuation");
+  if (pending) throw new GitMetadataValidationError("unterminated Git config continuation");
   return lines;
 }
 
@@ -389,7 +432,7 @@ function hasUnescapedTrailingBackslash(value: string): boolean {
 
 function parseGitConfigSection(line: string): { name: string; subsection?: string } {
   const match = /^\[[ \t]*([A-Za-z0-9][A-Za-z0-9.-]*)[ \t]*(?:"((?:[^"\\]|\\.)*)")?[ \t]*\](?:[ \t]*[#;].*)?$/.exec(line);
-  if (!match?.[1]) throw new Error("invalid Git config section");
+  if (!match?.[1]) throw new GitMetadataValidationError("invalid Git config section");
   if (!match[2] && match[1].includes(".")) {
     const separator = match[1].indexOf(".");
     return {
@@ -429,11 +472,11 @@ function parseGitConfigValue(value: string): string {
     }
     const trailing = input.slice(index + 1).trim();
     if (trailing && !trailing.startsWith("#") && !trailing.startsWith(";")) {
-      throw new Error("invalid Git config value");
+      throw new GitMetadataValidationError("invalid Git config value");
     }
     return result;
   }
-  throw new Error("unterminated Git config value");
+  throw new GitMetadataValidationError("unterminated Git config value");
 }
 
 function unescapeGitConfigText(value: string): string {
@@ -445,7 +488,7 @@ function unescapeGitConfigText(value: string): string {
       continue;
     }
     const escaped = value[index + 1];
-    if (escaped === undefined) throw new Error("invalid Git config escape");
+    if (escaped === undefined) throw new GitMetadataValidationError("invalid Git config escape");
     result += unescapeGitConfigCharacter(escaped);
     index += 1;
   }
@@ -457,7 +500,7 @@ function unescapeGitConfigCharacter(value: string): string {
   if (value === "t") return "\t";
   if (value === "b") return "\b";
   if (value === '"' || value === "\\") return value;
-  throw new Error("invalid Git config escape");
+  throw new GitMetadataValidationError("invalid Git config escape");
 }
 
 function selectedRemoteRepositoryName(remotes: Map<string, string>): string | undefined {
@@ -512,7 +555,7 @@ function repositoryNameFromCommonDir(commonDir: string): string {
     ? basename(dirname(commonDir))
     : commonName.replace(/\.git$/i, "");
   const normalized = sanitizeWorkspaceName(name);
-  if (!normalized) throw new Error("Git common directory has no usable repository name");
+  if (!normalized) throw new GitMetadataValidationError("Git common directory has no usable repository name");
   return normalized;
 }
 
@@ -536,4 +579,12 @@ function pathContains(root: string, candidate: string): boolean {
 
 function isNodeErrorCode(error: unknown, code: string): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === code);
+}
+
+class GitMetadataValidationError extends Error {}
+
+function canFallbackFromDirectGitDirectory(error: unknown): boolean {
+  return error instanceof GitMetadataValidationError
+    || isNodeErrorCode(error, "ENOENT")
+    || isNodeErrorCode(error, "ENOTDIR");
 }

@@ -150,11 +150,20 @@ normalized folder name. Resolution never falls back to the bare base user ID.
 A live Codex or Claude Code session remains pinned to the repository or local
 workspace resolved at the start of the session. Starting the client from a
 parent workspace and then entering a nested Git repository does not rebind the
-session. If Search or Add reports `workspace_scope_mismatch` or
-`workspace_scope_unavailable`, start a new session from the target repository
-or local workspace. For an unavailable scope, also verify that its `.git`
-metadata is readable and valid. These failures stop Search or Add before any
-request is sent to MemoraX.
+session. If a direct `.git` directory exists but its internal metadata is
+malformed or incomplete, MemoraX Code reports
+`workspaceScopeFallbackReason: git_metadata_invalid` and continues Search and
+Add with the normalized local folder name. The reported `effectiveUserId`
+identifies the fallback namespace and may differ from the repository namespace
+used before the Git damage. Repair the repository or restore valid `.git`
+metadata, then start a new client session to restore Git repository scope.
+
+Invalid or unreadable Git marker files, symlinked markers, and session scope
+conflicts do not use this fallback. If Search or Add reports
+`workspace_scope_mismatch` or `workspace_scope_unavailable`, start a new
+session from the target repository or local workspace and verify that its
+`.git` metadata is readable and valid. These failures stop Search or Add before
+any request is sent to MemoraX.
 
 Codex projectless tasks under its canonical dated-task location intentionally
 use the shared `Codex-General` memory name. Open a task in a real workspace
