@@ -10,6 +10,7 @@ import {
 } from "./vscode-extension-command.mjs";
 
 const CLAUDE_DESKTOP_MACOS_RUNTIME_SEGMENTS = ["claude.app", "Contents", "MacOS", "claude"];
+const CLAUDE_DESKTOP_CODE_PROBE_TIMEOUT_MS = 10_000;
 const CLAUDE_DESKTOP_WINDOWS_PACKAGE_NAME = "Claude";
 const CLAUDE_DESKTOP_WINDOWS_QUERY_TIMEOUT_MS = 10_000;
 const CLAUDE_DESKTOP_WINDOWS_RUNTIME_SEGMENTS = ["claude.exe"];
@@ -20,6 +21,7 @@ export function resolveClaudeCommand({
   platform = process.platform,
   arch = process.arch,
   desktopCodeRoots = defaultClaudeDesktopCodeRoots(env, homeDir, platform),
+  desktopCodeProbe = spawnSync,
   vscodeExtensionRoots = defaultVsCodeExtensionRoots(homeDir),
   windowsAppPackageFamilies,
   windowsAppQuery = spawnSync,
@@ -31,7 +33,12 @@ export function resolveClaudeCommand({
     return { command: "claude", source: "path" };
   }
 
-  const desktopCommand = findClaudeDesktopCodeCommand(desktopCodeRoots, platform);
+  const desktopCommand = findClaudeDesktopCodeCommand(
+    desktopCodeRoots,
+    platform,
+    env,
+    desktopCodeProbe,
+  );
   if (desktopCommand) return { command: desktopCommand, source: "app-bundled" };
 
   const windowsDesktopCommand = resolveWindowsClaudeDesktopCodeCommand({
@@ -39,6 +46,7 @@ export function resolveClaudeCommand({
     homeDir,
     packageFamilies: windowsAppPackageFamilies,
     platform,
+    desktopCodeProbe,
     spawnSyncImpl: windowsAppQuery,
   });
   if (windowsDesktopCommand) return { command: windowsDesktopCommand, source: "app-bundled" };
@@ -69,6 +77,7 @@ export function resolveWindowsClaudeDesktopCodeCommand({
   homeDir = homedir(),
   packageFamilies,
   platform = process.platform,
+  desktopCodeProbe = spawnSync,
   spawnSyncImpl = spawnSync,
 } = {}) {
   if (platform !== "win32") return undefined;
@@ -83,10 +92,10 @@ export function resolveWindowsClaudeDesktopCodeCommand({
     "Claude",
     "claude-code",
   ));
-  return findClaudeDesktopCodeCommand(roots, platform);
+  return findClaudeDesktopCodeCommand(roots, platform, env, desktopCodeProbe);
 }
 
-function findClaudeDesktopCodeCommand(roots, platform) {
+function findClaudeDesktopCodeCommand(roots, platform, env, spawnSyncImpl) {
   const runtimeSegments = claudeDesktopRuntimeSegments(platform);
   if (!runtimeSegments) return undefined;
   for (const root of new Set(roots)) {
@@ -101,10 +110,35 @@ function findClaudeDesktopCodeCommand(roots, platform) {
     }
     for (const version of versions) {
       const command = join(root, version, ...runtimeSegments);
-      if (isExecutableCommand(command, platform)) return command;
+      if (
+        isExecutableCommand(command, platform)
+        && claudeDesktopCodeCommandIsRunnable(command, env, spawnSyncImpl)
+      ) {
+        return command;
+      }
     }
   }
   return undefined;
+}
+
+function claudeDesktopCodeCommandIsRunnable(command, env, spawnSyncImpl) {
+  let result;
+  try {
+    result = spawnSyncImpl(
+      command,
+      ["--version"],
+      {
+        encoding: "utf8",
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: CLAUDE_DESKTOP_CODE_PROBE_TIMEOUT_MS,
+        windowsHide: true,
+      },
+    );
+  } catch {
+    return false;
+  }
+  return result.status === 0 && !result.error && !result.signal;
 }
 
 function defaultClaudeDesktopCodeRoots(env, homeDir, platform) {
