@@ -11,9 +11,9 @@ description: >-
   Classify the request as coding memory, repository memory, personal procedure
   memory, personal profile memory, or no persistent memory, then route it to the
   matching operation. Invoking this router does not require coding-memory
-  search. If the current conversation already contains sufficient information
-  for the request, use it directly instead of searching again. Prefer this
-  router over underlying memory workflows. Ask one focused question only when
+  search. Reuse a relevant coding-memory result already retrieved in this
+  conversation; otherwise let the matching operation decide on search. Prefer
+  this router over underlying memory workflows. Ask one focused question only when
   memory authority remains ambiguous.
 ---
 
