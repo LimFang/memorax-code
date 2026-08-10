@@ -344,43 +344,41 @@ test("codex-plugin hooks rejects malformed hooks/list payloads", async () => {
   }
 });
 
-test("codex-plugin trust-hooks rejects ambiguous or malformed base user config layers", async (t) => {
-  for (const { mode, expected } of [
-    { mode: "missing-profile", expected: /invalid user config layer/i },
-    { mode: "profile-only", expected: /0 base user config layers/i },
-    { mode: "no-user", expected: /0 base user config layers/i },
-    { mode: "multiple-base", expected: /2 base user config layers/i },
-    { mode: "invalid-config", expected: /invalid base user config layer/i },
-  ]) {
-    await t.test(mode, async () => {
-      const root = await mkdtemp(join(tmpdir(), `memorax-code-codex-hooks-layer-${mode}-`));
-      const home = join(root, "home");
-      const codexHome = join(home, "codex");
-      const rpcLog = join(root, "rpc.log");
-      try {
-        await mkdir(codexHome, { recursive: true });
-        const fakeCodex = await createFakeCodex(root);
-        const selected = hook(`layer-${mode}`, `sha256:layer-${mode}`);
-        const result = await runMemoraxCode([
-          "codex-plugin", "trust-hooks", "--yes", "--codex-command", fakeCodex, "--workspace", root, "--json",
-        ], {
-          HOME: home,
-          CODEX_HOME: codexHome,
-          TEST_CODEX_HOOKS: JSON.stringify([selected]),
-          TEST_CODEX_RPC_LOG: rpcLog,
-          TEST_CODEX_CONFIG_LAYER_MODE: mode,
-          MEMORAX_CODE_CODEX_HOOK_TRUST_SELECTION_JSON: JSON.stringify([selected]),
-        });
-        assert.equal(result.code, 1, result.stderr);
-        assert.match(result.stderr, expected);
-        const requests = (await readFile(rpcLog, "utf8")).trim().split(/\r?\n/).map((line) => JSON.parse(line));
-        assert.equal(requests.some((request) => request.method === "config/batchWrite"), false);
-      } finally {
-        await rm(root, { recursive: true, force: true });
-      }
-    });
-  }
-});
+for (const { mode, expected } of [
+  { mode: "missing-profile", expected: /invalid user config layer/i },
+  { mode: "profile-only", expected: /0 base user config layers/i },
+  { mode: "no-user", expected: /0 base user config layers/i },
+  { mode: "multiple-base", expected: /2 base user config layers/i },
+  { mode: "invalid-config", expected: /invalid base user config layer/i },
+]) {
+  test(`codex-plugin trust-hooks rejects ambiguous or malformed base user config layers: ${mode}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), `memorax-code-codex-hooks-layer-${mode}-`));
+    const home = join(root, "home");
+    const codexHome = join(home, "codex");
+    const rpcLog = join(root, "rpc.log");
+    try {
+      await mkdir(codexHome, { recursive: true });
+      const fakeCodex = await createFakeCodex(root);
+      const selected = hook(`layer-${mode}`, `sha256:layer-${mode}`);
+      const result = await runMemoraxCode([
+        "codex-plugin", "trust-hooks", "--yes", "--codex-command", fakeCodex, "--workspace", root, "--json",
+      ], {
+        HOME: home,
+        CODEX_HOME: codexHome,
+        TEST_CODEX_HOOKS: JSON.stringify([selected]),
+        TEST_CODEX_RPC_LOG: rpcLog,
+        TEST_CODEX_CONFIG_LAYER_MODE: mode,
+        MEMORAX_CODE_CODEX_HOOK_TRUST_SELECTION_JSON: JSON.stringify([selected]),
+      });
+      assert.equal(result.code, 1, result.stderr);
+      assert.match(result.stderr, expected);
+      const requests = (await readFile(rpcLog, "utf8")).trim().split(/\r?\n/).map((line) => JSON.parse(line));
+      assert.equal(requests.some((request) => request.method === "config/batchWrite"), false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
 
 test("codex-plugin trust-hooks fails closed on config version conflicts without retrying", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-codex-hooks-conflict-"));
