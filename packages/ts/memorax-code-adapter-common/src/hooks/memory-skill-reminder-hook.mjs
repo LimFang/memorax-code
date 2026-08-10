@@ -182,7 +182,7 @@ function combinedReminderContext(options, due, cadenceReminderContext, personalM
 
 function memoryReminderContext(options) {
   const invocation = stringOption(options.memorySkillInvocation) ?? DEFAULT_MEMORY_SKILL_INVOCATION;
-  return `MemoraX Code reminder: proactively invoke ${invocation} whenever coding memory might help, even when uncertain; when in doubt, run one focused coding-memory search for relevant prior knowledge. Also use ${invocation} for repository-scoped personal memory, and classify the authority before reading or writing.`;
+  return `MemoraX Code reminder: proactively invoke ${invocation} whenever coding memory might help, even when uncertain; follow the skill's router to decide whether any memory operation is needed. Also use ${invocation} for repository-scoped personal memory, and classify the authority before reading or writing.`;
 }
 
 function defaultMemoraxCodeHome() {
