@@ -611,7 +611,12 @@ function printLifecycleResult(report: MemoraxCodeLifecycleReport): void {
   backendLog(`${lifecycleActionLabel(report.action)}: ${report.ok ? green(degraded ? "ok (degraded)" : "ok") : red("needs attention")}`);
   if (report.message) backendLog(report.message);
   if (report.backend) {
-    backendLog(`Backend: ${report.backend.ok ? green(report.backend.degraded ? "ok (degraded)" : "ok") : red("not ok")}${report.backend.state?.url ? ` ${report.backend.state.url}` : ""}${report.backend.errorCode ? ` code=${report.backend.errorCode}` : ""}${report.backend.error ? ` error=${report.backend.error}` : ""}`);
+    const status = !report.backend.ok
+      ? red("not ok")
+      : report.backend.action === "stop"
+        ? green(report.backend.skipped ? "kept running" : "stopped")
+        : green(report.backend.degraded ? "ok (degraded)" : "ok");
+    backendLog(`Backend: ${status}${report.backend.state?.url ? ` ${report.backend.state.url}` : ""}${report.backend.errorCode ? ` code=${report.backend.errorCode}` : ""}${report.backend.error ? ` error=${report.backend.error}` : ""}`);
     for (const warning of report.backend.warnings ?? []) {
       backendLog(`Warning: ${warning.message}${warning.errorCode ? ` code=${warning.errorCode}` : ""}`);
     }
@@ -719,15 +724,33 @@ function lifecycleGuidance(report: MemoraxCodeLifecycleReport): string[] {
       ];
   }
   if (report.action === "uninstall") {
-    return report.ok
-      ? [
-        green("MemoraX Code has been uninstalled from this npm installation."),
-        green("Restart or refresh Codex so it drops the removed adapter plugin."),
-      ]
-      : [
+    if (!report.ok) {
+      return [
         red("Uninstall needs attention."),
         "Run `memorax-code status` and `memorax-code logs` before retrying.",
       ];
+    }
+    const clientName = report.codexAdapter && report.claudeAdapter
+      ? "Codex and Claude Code"
+      : report.codexAdapter
+        ? "Codex"
+        : report.claudeAdapter
+          ? "Claude Code"
+          : undefined;
+    const npmPackageRemoved = report.npmPackageRemoval?.ok === true
+      && report.npmPackageRemoval.skipped !== true;
+    return [
+      ...(npmPackageRemoved
+        ? [green("MemoraX Code has been uninstalled from this npm installation.")]
+        : clientName
+          ? [green(`MemoraX Code has been uninstalled from ${clientName}.`)]
+          : []),
+      ...(clientName
+        ? [green(report.codexAdapter && report.claudeAdapter
+          ? "Restart or refresh Codex and Claude Code so they drop the removed adapter plugins."
+          : `Restart or refresh ${clientName} so it drops the removed adapter plugin.`)]
+        : []),
+    ];
   }
   return [];
 }

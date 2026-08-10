@@ -900,6 +900,7 @@ test("memorax-code lifecycle CLI prints prefixed user guidance", async () => {
     ]);
     assert.equal(stopped.code, 0, `${stopped.stdout}\n${stopped.stderr}`);
     assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: Stop: .*ok/m);
+    assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: Backend: .*stopped/m);
     assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: .*Backend is stopped\./m);
 
     const uninstalled = await runCli(cliPath, [
@@ -911,11 +912,64 @@ test("memorax-code lifecycle CLI prints prefixed user guidance", async () => {
     ]);
     assert.equal(uninstalled.code, 0, `${uninstalled.stdout}\n${uninstalled.stderr}`);
     assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: Uninstall: .*ok/m);
+    assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: Backend: .*stopped/m);
     assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: npm package: skipped partial_client_uninstall/m);
-    assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: .*Restart or refresh Codex/m);
+    assert.doesNotMatch(uninstalled.stdout, /MemoraX Code has been uninstalled/);
+    assert.doesNotMatch(uninstalled.stdout, /Restart or refresh (?:Codex|Claude Code)/);
   } finally {
     await runCli(cliPath, ["stop", "--json", "--home", home, "--port", String(port), "--clients", "none"]);
     await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("memorax-code uninstall guidance names only the selected Claude client", async () => {
+  const home = await mkdtemp(join(tmpdir(), "memorax-code-uninstall-guidance-home-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "memorax-code-uninstall-guidance-codex-"));
+  const claudeHome = await mkdtemp(join(tmpdir(), "memorax-code-uninstall-guidance-claude-"));
+  const port = await freePort();
+  const cliPath = fileURLToPath(new URL("../dist/memorax-code.js", import.meta.url));
+  const pluginCli = await prepareClaudePluginCli(home);
+  await writeManagedClientsConfig(home, { codex: true, claude: true });
+  await writeFile(join(codexHome, "config.toml"), 'model_provider = "openai"\n');
+  await writeFile(join(claudeHome, "settings.json"), "{}\n");
+  await prepareActiveCodexPlugin(codexHome);
+  const env = {
+    CLAUDE_CONFIG_DIR: claudeHome,
+    FAKE_CLAUDE_PLUGIN_CALLS: pluginCli.callsPath,
+    MEMORAX_CODE_CLAUDE_COMMAND: pluginCli.claudeCommand,
+  };
+  const commonArgs = [
+    "--home", home,
+    "--port", String(port),
+    "--codex-home", codexHome,
+    "--claude-home", claudeHome,
+  ];
+  try {
+    const started = await runCli(cliPath, ["start", "--json", ...commonArgs], { env });
+    assert.equal(started.code, 0, `${started.stdout}\n${started.stderr}`);
+
+    const uninstalled = await runCli(cliPath, [
+      "uninstall",
+      ...commonArgs,
+      "--clients", "claude",
+      "--no-npm-uninstall",
+    ], { env });
+    assert.equal(uninstalled.code, 0, `${uninstalled.stdout}\n${uninstalled.stderr}`);
+    assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: Backend: .*kept running.*127\.0\.0\.1/m);
+    assert.match(uninstalled.stdout, /^\[MemoraX Code Backend\]: npm package: skipped partial_client_uninstall/m);
+    assert.match(uninstalled.stdout, /MemoraX Code has been uninstalled from Claude Code\./);
+    assert.match(uninstalled.stdout, /Restart or refresh Claude Code so it drops the removed adapter plugin\./);
+    assert.doesNotMatch(uninstalled.stdout, /uninstalled from this npm installation/);
+    assert.doesNotMatch(uninstalled.stdout, /Restart or refresh Codex/);
+
+    const stopped = await runCli(cliPath, ["stop", ...commonArgs, "--clients", "codex"], { env });
+    assert.equal(stopped.code, 0, `${stopped.stdout}\n${stopped.stderr}`);
+    assert.match(stopped.stdout, /^\[MemoraX Code Backend\]: Backend: .*stopped.*127\.0\.0\.1/m);
+  } finally {
+    await runCli(cliPath, ["stop", "--json", ...commonArgs, "--clients", "none"], { env });
+    await rm(home, { recursive: true, force: true });
+    await rm(codexHome, { recursive: true, force: true });
+    await rm(claudeHome, { recursive: true, force: true });
   }
 });
 
