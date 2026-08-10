@@ -156,11 +156,11 @@ memorax-code update
 ```
 
 The command follows the installed release channel and preserves configuration.
-If a legacy installation left both clients disabled, the update re-detects
-runnable clients and enables the integrations it finds. If Codex is newly
-enabled, approve the Hook activation prompt; a non-interactive update prints
-the manual activation command. Restart or refresh Codex and Claude Code when a
-release changes plugin assets or skills.
+During an interactive update, each runnable client whose integration is
+disabled is offered for activation with a default of yes. Declining the prompt,
+or running the update non-interactively, keeps that client disabled. If Codex
+is newly enabled, approve the following Hook activation prompt. Restart or
+refresh Codex and Claude Code when a release changes plugin assets or skills.
 
 ## Uninstall
 

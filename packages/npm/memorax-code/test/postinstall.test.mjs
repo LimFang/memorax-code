@@ -674,7 +674,7 @@ test("postinstall generation activation failure preserves the active runtime", a
   }
 });
 
-test("postinstall update refreshes installed assets without setup or Hook prompts when Hooks are unchanged", async () => {
+test("postinstall update offers a disabled client while refreshing unchanged Hooks", async () => {
   const oldConfig = [
     "# MemoraX Code local config.",
     "[clients]",
@@ -692,13 +692,16 @@ test("postinstall update refreshes installed assets without setup or Hook prompt
     existingCache: true,
     memoraxCodeConfig: oldConfig,
     interactive: true,
+    input: "n\n",
     npmCommand: "update",
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.result.stderr, /Package update detected; refreshing MemoraX Code assets without interactive setup prompts/);
+    assert.match(run.result.stderr, /Package update detected; refreshing MemoraX Code assets and checking client availability/);
     assert.doesNotMatch(run.result.stderr, /Configure MemoraX Code for which clients/);
     assert.doesNotMatch(run.result.stderr, /Connect MemoraX Code to MemoraX now/);
+    assert.match(run.result.stderr, /Claude Code runtime is available, but its integration is disabled in \[clients\]\. Enable it now\? \[Y\/n\]/);
+    assert.match(run.result.stderr, /Keeping the Claude Code integration disabled/);
     assert.doesNotMatch(run.result.stderr, /Activate and trust MemoraX Code Codex Adapter hooks now/);
     assert.doesNotMatch(run.result.stderr, /Trust these new or changed Codex Hooks/);
     assert.match(run.log, /^memorax-code codex-plugin hooks .*--json$/m);
@@ -952,7 +955,7 @@ test("postinstall update succeeds with Hooks untrusted when the reviewed batch c
   }
 });
 
-test("postinstall update preserves the current Codex-only selection", async () => {
+test("postinstall update offers a detected Claude runtime and preserves the Codex-only selection when declined", async () => {
   const run = await runPostinstall({
     existingCache: true,
     memoraxCodeConfig: [
@@ -962,18 +965,103 @@ test("postinstall update preserves the current Codex-only selection", async () =
       "",
     ].join("\n"),
     interactive: true,
+    input: "n\n",
     npmCommand: "update",
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
     assert.match(run.log, /^codex --version$/m);
-    assert.doesNotMatch(run.log, /^claude /m);
-    assert.doesNotMatch(run.result.stderr, /Claude Code login mode:/);
+    assert.match(run.log, /^claude --version$/m);
+    assert.match(run.result.stderr, /Claude Code runtime is available, but its integration is disabled in \[clients\]\. Enable it now\? \[Y\/n\]/);
+    assert.match(run.result.stderr, /Keeping the Claude Code integration disabled/);
     assert.match(run.log, /^memorax-code start --clients codex$/m);
     assert.match(run.log, /^memorax-code status --clients codex$/m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
     assert.match(config, /^"codex" = true # Keep the managed Codex choice\.$/m);
     assert.match(config, /^'claude' = false # Keep Claude outside this lifecycle\.$/m);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall update defaults to enabling a detected Codex runtime on Enter", async () => {
+  const run = await runPostinstall({
+    input: "\ny\n",
+    interactive: true,
+    memoraxCodeConfig: [
+      "[clients]",
+      "codex = false",
+      "claude = true",
+      "",
+    ].join("\n"),
+    npmCommand: "update",
+  });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.log, /^codex --version$/m);
+    assert.match(run.log, /^claude --version$/m);
+    assert.match(run.result.stderr, /Codex runtime is available, but its integration is disabled in \[clients\]\. Enable it now\? \[Y\/n\]/);
+    assert.match(run.result.stderr, /Enabling the Codex integration/);
+    assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
+    assert.match(run.result.stderr, /Activate and trust MemoraX Code Codex Adapter hooks now\? \[Y\/n\]/);
+    assert.match(run.log, /^memorax-code codex-plugin activate --yes$/m);
+    assert.match(run.log, /^memorax-code start --clients all$/m);
+    assert.match(run.log, /^memorax-code status --clients all$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(config, /\[clients\]\ncodex = true\nclaude = true/);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall update keeps a detected disabled client unchanged when non-interactive", async () => {
+  const run = await runPostinstall({
+    memoraxCodeConfig: [
+      "[clients]",
+      "codex = false",
+      "claude = true",
+      "",
+    ].join("\n"),
+    npmCommand: "update",
+  });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.log, /^codex --version$/m);
+    assert.match(run.log, /^claude --version$/m);
+    assert.match(run.result.stderr, /Codex runtime is available, but its integration remains disabled because this update cannot prompt/);
+    assert.doesNotMatch(run.log, /^memorax-code codex-plugin install --json$/m);
+    assert.match(run.log, /^memorax-code start --clients claude$/m);
+    assert.match(run.log, /^memorax-code status --clients claude$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(config, /\[clients\]\ncodex = false\nclaude = true/);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall update lets each detected disabled client be selected independently", async () => {
+  const run = await runPostinstall({
+    input: "n\ny\n",
+    interactive: true,
+    memoraxCodeConfig: [
+      "[clients]",
+      "codex = false",
+      "claude = false",
+      "",
+    ].join("\n"),
+    npmCommand: "update",
+  });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /Codex runtime is available, but its integration is disabled in \[clients\]\. Enable it now\? \[Y\/n\]/);
+    assert.match(run.result.stderr, /Keeping the Codex integration disabled/);
+    assert.match(run.result.stderr, /Claude Code runtime is available, but its integration is disabled in \[clients\]\. Enable it now\? \[Y\/n\]/);
+    assert.match(run.result.stderr, /Enabling the Claude Code integration/);
+    assert.doesNotMatch(run.log, /^memorax-code codex-plugin install --json$/m);
+    assert.match(run.log, /^memorax-code start --clients claude$/m);
+    assert.match(run.log, /^memorax-code status --clients claude$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(config, /\[clients\]\ncodex = false\nclaude = true/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1025,7 +1113,7 @@ test("postinstall reinstall re-detects a newly available Claude runtime", async 
 test("postinstall update re-detects a legacy empty client selection", async () => {
   const run = await runPostinstall({
     claudeAvailable: false,
-    input: "y\n",
+    input: "y\ny\n",
     interactive: true,
     memoraxCodeConfig: [
       "[clients]",
@@ -1039,7 +1127,8 @@ test("postinstall update re-detects a legacy empty client selection", async () =
     assert.equal(run.result.code, 0, run.result.stderr);
     assert.match(run.log, /^codex --version$/m);
     assert.match(run.result.stderr, /Claude Code runtime was not detected; skipping its adapter setup/);
-    assert.match(run.result.stderr, /Detected supported client runtimes\. Configuring MemoraX Code for Codex only\./);
+    assert.match(run.result.stderr, /Codex runtime is available, but its integration is disabled in \[clients\]\. Enable it now\? \[Y\/n\]/);
+    assert.match(run.result.stderr, /Enabling the Codex integration/);
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
     assert.match(run.result.stderr, /Activate and trust MemoraX Code Codex Adapter hooks now\? \[Y\/n\]/);
     assert.match(run.log, /^memorax-code codex-plugin activate --yes$/m);
