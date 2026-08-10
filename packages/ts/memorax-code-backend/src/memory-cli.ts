@@ -42,6 +42,7 @@ type MemoryCliResult = {
   effectiveUserId?: string;
   workspaceScope?: "bound" | "unavailable";
   workspaceScopeReason?: string;
+  userAction?: string;
   searchEnabled?: boolean;
   addEnabled?: boolean;
   config?: unknown;
@@ -124,7 +125,7 @@ async function memorySearch(args: string[], options: MemoryCliOptions): Promise<
   const query = queryResult.text;
   const repositoryMemory = await resolveMemoryCliRepositoryMemory(options);
   if (!repositoryMemory.ok) {
-    return { ok: false, action: "memory.search", query, error: repositoryMemory.error };
+    return memoryCliRepositoryFailure("memory.search", repositoryMemory, { query });
   }
   const observability = await memoryCliObservability(options.env);
   const response = await invokeMemoraxMemoryProvider(
@@ -186,7 +187,7 @@ async function memoryAdd(args: string[], options: MemoryCliOptions): Promise<Mem
   const contentOptions = memoryAddContentOptions(args);
   if (!contentOptions.ok) return { ok: false, action: "memory.add", error: contentOptions.error };
   const repositoryMemory = await resolveMemoryCliRepositoryMemory(options);
-  if (!repositoryMemory.ok) return { ok: false, action: "memory.add", error: repositoryMemory.error };
+  if (!repositoryMemory.ok) return memoryCliRepositoryFailure("memory.add", repositoryMemory);
 
   const sessionId = memoryCliSessionId(args, env);
   const observability = await memoryCliObservability(env);
@@ -286,6 +287,29 @@ async function resolveMemoryCliRepositoryMemory(options: MemoryCliOptions): Prom
     };
   }
   return commandMemory;
+}
+
+function memoryCliRepositoryFailure(
+  action: "memory.search" | "memory.add",
+  failure: Extract<ConfiguredRepositoryMemoryResult, { ok: false }>,
+  fields: Pick<MemoryCliResult, "query"> = {},
+): MemoryCliResult {
+  const userAction = failure.reason === "workspace_scope_mismatch"
+    ? "Start a new Codex or Claude Code session from the target repository or local workspace."
+    : failure.reason === "workspace_scope_unavailable"
+      ? "Start a new Codex or Claude Code session from the target repository or local workspace. If the problem continues, make sure its .git metadata is readable and valid."
+      : undefined;
+  return {
+    ok: false,
+    action,
+    ...fields,
+    ...(userAction ? {
+      workspaceScope: "unavailable" as const,
+      workspaceScopeReason: failure.reason,
+      userAction,
+    } : {}),
+    error: failure.error,
+  };
 }
 
 function memoryCliIdentityFields(memory: ConfiguredRepositoryMemory): Pick<

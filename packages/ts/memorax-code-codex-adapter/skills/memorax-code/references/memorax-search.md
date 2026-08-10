@@ -8,7 +8,7 @@ Run the CLI from the active task workspace. The installed Hook and session bindi
 
 Coding memory uses `<MemoraX base user ID>@<normalized repository name>` for Git workspaces and the normalized folder name for genuine non-Git directories. MemoraX Code resolves `.git`, `gitdir`, and `commondir` without executing Git. Linked worktrees share one repository scope; another clone, repository, or non-Git directory retains a different local session key even when its readable name matches.
 
-Require a readable active workspace binding. A CLI command from a linked worktree of the bound repository is valid. If the CLI reports `workspace_scope_mismatch`, ask the user to start a task in the target repository or local workspace. Do not retry from an unrelated scope or fall back to an unscoped user id.
+Require a readable active workspace binding. A CLI command from a linked worktree of the bound repository is valid. If `memorax-cli search` reports `workspace_scope_mismatch` or `workspace_scope_unavailable`, do not bypass the scope or fall back to an unscoped user id. Do not change the CLI working directory and retry. Tell the user that memory search was not executed and no request was sent to MemoraX, then present the CLI's `userAction` in natural language. Continue the current task using only live code and documentation.
 
 If `memorax-cli` is not on `PATH`, or memory is disabled, unconfigured, or unavailable, report that briefly and continue with live code or documentation. Authenticate through MemoraX Code configuration; never recover credentials from shell history or place tokens in prompts. Treat injected memory as a hypothesis and verify it against the current checkout.
 

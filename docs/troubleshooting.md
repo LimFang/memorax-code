@@ -147,6 +147,15 @@ MemoraX Code reads filesystem Git metadata without executing Git. Linked
 worktrees share the remote repository identity; non-Git workspaces use the
 normalized folder name. Resolution never falls back to the bare base user ID.
 
+A live Codex or Claude Code session remains pinned to the repository or local
+workspace resolved at the start of the session. Starting the client from a
+parent workspace and then entering a nested Git repository does not rebind the
+session. If Search or Add reports `workspace_scope_mismatch` or
+`workspace_scope_unavailable`, start a new session from the target repository
+or local workspace. For an unavailable scope, also verify that its `.git`
+metadata is readable and valid. These failures stop Search or Add before any
+request is sent to MemoraX.
+
 Codex projectless tasks under its canonical dated-task location intentionally
 use the shared `Codex-General` memory name. Open a task in a real workspace
 when repository isolation matters.
