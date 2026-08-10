@@ -29,6 +29,7 @@ test("memory viewer user route renders the compact summary surface", async () =>
     assert.match(html, /LANGUAGE_STORAGE_KEY,\['zh','en'\],'en'/);
     assert.match(html, /memorax-code-memory-viewer-language/);
     assert.match(html, /memorax-code-memory-viewer-theme/);
+    assert.match(html, /rel="icon" type="image\/png" sizes="64x64" href="\/memory-viewer\/favicon\.png"/);
     assert.match(html, /params\.has\('token'\)/);
     assert.match(html, /bootstrapUrl\.searchParams\.delete\('token'\)/);
     assert.match(html, /history\.replaceState\(null,'',bootstrapUrl\)/);
@@ -47,6 +48,14 @@ test("memory viewer user route renders the compact summary surface", async () =>
     assert.deepEqual(
       [...new Uint8Array(await logo.arrayBuffer()).subarray(0, 8)],
       [137, 80, 78, 71, 13, 10, 26, 10],
+    );
+
+    const favicon = await fetch(`${url}/memory-viewer/favicon.png`);
+    assert.equal(favicon.status, 200);
+    assert.equal(favicon.headers.get("content-type"), "image/png");
+    assert.deepEqual(
+      [...new Uint8Array(await favicon.arrayBuffer()).subarray(0, 24)],
+      [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 64, 0, 0, 0, 64],
     );
   } finally {
     await close();

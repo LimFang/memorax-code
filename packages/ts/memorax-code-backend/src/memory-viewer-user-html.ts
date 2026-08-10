@@ -5,6 +5,7 @@ export function memoryViewerUserHtml(): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f7f8fc">
+  <link rel="icon" type="image/png" sizes="64x64" href="/memory-viewer/favicon.png">
   <title>MemoraX Code Memory Viewer</title>
   <script>
     const THEME_STORAGE_KEY='memorax-code-memory-viewer-theme',LANGUAGE_STORAGE_KEY='memorax-code-memory-viewer-language';
