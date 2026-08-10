@@ -33,6 +33,38 @@ test("Claude command resolution preserves an explicit command and PATH CLI prece
   }
 });
 
+test("Claude command resolution uses the newest Claude Desktop Code runtime", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-claude-command-desktop-"));
+  try {
+    const desktopRoot = join(root, "Library", "Application Support", "Claude", "claude-code");
+    await executable(join(desktopRoot, "2.9.0", "claude.app", "Contents", "MacOS", "claude"));
+    const expected = await executable(join(
+      desktopRoot,
+      "2.10.0",
+      "claude.app",
+      "Contents",
+      "MacOS",
+      "claude",
+    ));
+    await mkdir(join(desktopRoot, "99.0.0"), { recursive: true });
+
+    const env = { PATH: join(root, "empty-bin") };
+    const resolved = ensureClaudeCommandEnv({
+      env,
+      homeDir: root,
+      platform: "darwin",
+      arch: "arm64",
+      desktopCodeRoots: [desktopRoot],
+      vscodeExtensionRoots: [],
+    });
+
+    assert.deepEqual(resolved, { command: expected, source: "app-bundled" });
+    assert.equal(env.MEMORAX_CODE_CLAUDE_COMMAND, expected);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("Claude command resolution uses the newest matching VS Code bundled runtime", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-claude-command-vscode-"));
   try {
