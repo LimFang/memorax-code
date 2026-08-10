@@ -13,6 +13,7 @@ import { retrieveAutomaticMemoryContext } from "./automatic-memory-retrieval.js"
 import { readCodexSessionTurnIndex } from "./codex-session-turn-index.js";
 import { resolveCodexWorkspaceRoot } from "./codex-workspace-links.js";
 import type {
+  MemoryHookTurnStartResult,
   CodexTurnStartCommand,
   CodexWritebackCommand,
 } from "./memory-hook-command.js";
@@ -24,6 +25,7 @@ import {
 } from "./memory-turn-coordinator.js";
 import {
   createRepositoryMemorySessionRuntime,
+  resolvedRepoMemoryWorktree,
   type ConfiguredRepositoryMemoryResult,
   type RepositoryMemorySessionRuntime,
 } from "./repository-memory-context.js";
@@ -95,7 +97,7 @@ export type CodexMemoryHookRuntimeOptions = {
 };
 
 export type CodexMemoryHookRuntime = {
-  recordTurnStart(command: CodexTurnStartCommand): Promise<{ ok: true; additionalContext?: string }>;
+  recordTurnStart(command: CodexTurnStartCommand): Promise<MemoryHookTurnStartResult>;
   writeback(command: CodexWritebackCommand): Promise<CodexMemoryHookWritebackResult>;
   size(): number;
   close(): void;
@@ -143,6 +145,7 @@ export function createCodexMemoryHookRuntime(options: CodexMemoryHookRuntimeOpti
         resolveHookRepositoryMemory(turn, options, repositoryMemorySession),
         resolveSessionTurnIndex(turn, options.diagnosticLogger),
       ]);
+      const repoMemoryWorktree = resolvedRepoMemoryWorktree(repositoryMemory);
       if (turn.turnId) {
         turnCoordinator.recordTurnStart({
           client: CODEX_MEMORY_TURN_CLIENT,
@@ -196,7 +199,10 @@ export function createCodexMemoryHookRuntime(options: CodexMemoryHookRuntimeOpti
           turn.turnId,
         )
       ) {
-        return { ok: true };
+        return {
+          ok: true,
+          ...(repoMemoryWorktree ? { repoMemoryWorktree } : {}),
+        };
       }
       const retrieval = await retrieveAutomaticMemoryContext({
         diagnosticLogger: options.diagnosticLogger,
@@ -211,6 +217,7 @@ export function createCodexMemoryHookRuntime(options: CodexMemoryHookRuntimeOpti
       });
       return {
         ok: true,
+        ...(repoMemoryWorktree ? { repoMemoryWorktree } : {}),
         ...(retrieval.context ? { additionalContext: retrieval.context } : {}),
       };
     },

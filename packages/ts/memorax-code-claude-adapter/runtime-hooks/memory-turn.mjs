@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { resolveBackendConnection } from "../../memorax-code-adapter-common/src/backend-connection.mjs";
 import { readStdinJson } from "../../memorax-code-adapter-common/src/config-utils.mjs";
+import { scheduleMissingRepoMemoryBuild } from "../../memorax-code-adapter-common/src/repo-memory/repo-memory-auto-build.mjs";
 import { isRepoMemoryJobWorker } from "../../memorax-code-adapter-common/src/repo-memory/repo-memory-job-context.mjs";
 
 const RETRIEVAL_BACKEND_TIMEOUT_MS = 12_000;
@@ -28,6 +29,10 @@ try {
       prompt,
       cwd: stringValue(input.cwd),
       workspaceKind: stringValue(input.workspace_kind) ?? stringValue(input.workspaceKind),
+    });
+    scheduleMissingRepoMemoryBuild(stringValue(response?.repoMemoryWorktree), {
+      debugEnv: "MEMORAX_CODE_CLAUDE_HOOK_DEBUG",
+      pluginRoot: process.env.CLAUDE_PLUGIN_ROOT,
     });
     const additionalContext = stringValue(response?.additionalContext);
     if (additionalContext) {

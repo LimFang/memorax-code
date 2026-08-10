@@ -34,6 +34,10 @@ After the first installation, restart or refresh the detected clients before
 opening a new session. In Codex, enable **MemoraX Code Codex Adapter** from
 Plugins or `/plugins` if it is not already enabled.
 
+On the first eligible prompt in a Git worktree, the client uses the worktree
+authorized by the Backend and starts a background Repo Memory build when its
+`.repo_memory/PROFILE.md` is missing. An existing profile is left unchanged.
+
 ## Verify
 
 ```bash

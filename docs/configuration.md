@@ -167,6 +167,11 @@ Supported policies are `every-commit`, `commit-count`, `daily`,
 `pull-request`, `pull-request-or-daily`, and `adaptive`. Invalid policy values
 fall back to `adaptive`.
 
+The first eligible prompt starts a background build only when the Backend has
+authorized a Git worktree and that worktree has no `.repo_memory/PROFILE.md`.
+If the Backend or workspace authority is unavailable, the Hook skips the
+initial build instead of falling back to its local `cwd`.
+
 ## Local traces
 
 `[trace.codex]` and `[trace.claude]` support the same fields:

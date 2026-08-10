@@ -21,6 +21,31 @@ const SCOPE = {
   scopeKind: "local-directory",
   boundWorkspaceRoot: "/workspace/claude-hook",
 };
+const GIT_SCOPE = {
+  ...SCOPE,
+  identitySource: "git-common-dir",
+  scopeKind: "git-repository",
+  boundWorkspaceRoot: "/workspace/claude-git-worktree",
+};
+
+test("Claude Hook returns the Backend-authorized Git worktree", async () => {
+  const runtime = createClaudeMemoryHookRuntime({
+    automaticWriteback: () => ({ accepted: true }),
+    env: {
+      ...TRACE_DISABLED_ENV,
+      MEMORAX_CODE_MEMORY_RETRIEVAL_ENABLED: "false",
+    },
+    repositoryMemorySession: repositoryRuntime({}, GIT_SCOPE),
+  });
+  try {
+    assert.deepEqual(
+      await runtime.recordTurnStart(turnStart("/tmp/claude-git-transcript.jsonl")),
+      { ok: true, repoMemoryWorktree: GIT_SCOPE.boundWorkspaceRoot },
+    );
+  } finally {
+    runtime.close();
+  }
+});
 
 test("Claude Hook writeback uses exact transcript content", async () => {
   const fixture = await transcriptFixture("Materialized prompt.", "Materialized answer.");
@@ -683,10 +708,10 @@ test("Claude automatic retrieval counts each prompt id once per session", async 
   }
 });
 
-function repositoryRuntime(config = {}) {
+function repositoryRuntime(config = {}, scope = SCOPE) {
   return {
     async resolve() {
-      return { ok: true, memory: { config, scope: SCOPE } };
+      return { ok: true, memory: { config, scope } };
     },
     close() {},
   };

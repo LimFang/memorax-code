@@ -122,7 +122,7 @@ the current repository.
 | **Background memory writeback** | Extracts reusable knowledge from completed turns and writes it to Coding Memory in the background. |
 | **Preference continuity** | Records User Profile preferences and injects them into future tasks on a configured cadence. |
 | **Procedure reuse** | Records reusable task procedures and reminds future agents to apply them. |
-| **Background Repo Memory maintenance** | Automatically organizes repository structure, entry points, and history evidence in the background, then updates them according to policy to reduce repeated searching and summarization. |
+| **Background Repo Memory maintenance** | Starts an initial background build when the Backend-authorized Git worktree has no `.repo_memory/PROFILE.md`, then updates existing Repo Memory according to policy. |
 | **Active memory control** | Lets you search and add memory through the bundled MemoraX Code skill (`$memorax-code` in Codex or `/memorax-code` in Claude Code) or the CLI. |
 | **Hook integration** | Uses Codex and Claude Code Hooks to trigger memory retrieval, reminders, and writeback. |
 | **Local visualization** | Uses the local Memory Viewer to summarize activity counts, retrieval, and writeback status. |
