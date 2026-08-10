@@ -326,18 +326,24 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     await chmod(join(fakeBin, "codex"), 0o755);
   }
   if (codexAppOnly) {
-    const appCodex = join(home, "Applications", "ChatGPT.app", "Contents", "Resources", "codex");
+    const appCodex = process.platform === "win32"
+      ? join(codexHome, "plugins", ".plugin-appserver", "codex.exe")
+      : join(home, "Applications", "ChatGPT.app", "Contents", "Resources", "codex");
     await mkdir(dirname(appCodex), { recursive: true });
-    await writeFile(appCodex, [
-      "#!/usr/bin/env node",
-      "import { appendFileSync } from 'node:fs';",
-      `appendFileSync(${JSON.stringify(logPath)}, 'app-codex ' + process.argv.slice(2).join(' ') + '\\n');`,
-      "if (process.argv[2] === '--version') console.log('codex-app 9.9.9-test');",
-      "process.exit(0);",
-      "",
-    ].join("\n"), { mode: 0o755 });
-    await chmod(appCodex, 0o755);
-    await symlink(process.execPath, join(fakeBin, "node"));
+    if (process.platform === "win32") {
+      await copyFile(process.execPath, appCodex);
+    } else {
+      await writeFile(appCodex, [
+        "#!/usr/bin/env node",
+        "import { appendFileSync } from 'node:fs';",
+        `appendFileSync(${JSON.stringify(logPath)}, 'app-codex ' + process.argv.slice(2).join(' ') + '\\n');`,
+        "if (process.argv[2] === '--version') console.log('codex-app 9.9.9-test');",
+        "process.exit(0);",
+        "",
+      ].join("\n"), { mode: 0o755 });
+      await chmod(appCodex, 0o755);
+      await symlink(process.execPath, join(fakeBin, "node"));
+    }
   }
   if (vscodeOnly) {
     await writeMockVsCodeRuntimes({ home, logPath });
@@ -1220,12 +1226,20 @@ test("postinstall uses the Codex App bundled runtime when no standalone CLI is i
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.result.stderr, /Codex App runtime: codex-app 9\.9\.9-test/);
-    assert.match(run.log, /^app-codex --version$/m);
+    assert.match(
+      run.result.stderr,
+      process.platform === "win32"
+        ? /Codex App runtime: v\d+\./
+        : /Codex App runtime: codex-app 9\.9\.9-test/,
+    );
+    if (process.platform !== "win32") assert.match(run.log, /^app-codex --version$/m);
     assert.doesNotMatch(run.log, /^codex --version$/m);
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
     assert.match(run.log, /^memorax-code codex-plugin activate --yes$/m);
-    assert.match(run.log, new RegExp(`^codex-runtime ${run.root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/home/Applications/ChatGPT\\.app/Contents/Resources/codex$`, "m"));
+    const expectedRuntime = process.platform === "win32"
+      ? join(run.codexHome, "plugins", ".plugin-appserver", "codex.exe")
+      : join(run.root, "home", "Applications", "ChatGPT.app", "Contents", "Resources", "codex");
+    assert.match(run.log, new RegExp(`^codex-runtime ${expectedRuntime.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
     assert.match(run.log, /^memorax-code start --clients codex$/m);
   } finally {
     await rm(run.root, { recursive: true, force: true });

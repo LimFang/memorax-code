@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, win32 } from "node:path";
 import test from "node:test";
-import { ensureCodexCommandEnv, resolveCodexCommand } from "../lib/resolve-codex-command.mjs";
+import {
+  ensureCodexCommandEnv,
+  resolveCodexCommand,
+  resolveWindowsCodexAppCommand,
+} from "../lib/resolve-codex-command.mjs";
 
 async function executable(path) {
   await mkdir(dirname(path), { recursive: true });
@@ -70,6 +74,66 @@ test("Codex command resolution uses the desktop App bundled runtime without a PA
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("Codex command resolution uses the runnable Windows App plugin runtime", () => {
+  const appCommand = win32.join(
+    "C:\\Users\\tester\\.codex",
+    "plugins",
+    ".plugin-appserver",
+    "codex.exe",
+  );
+  const calls = [];
+  const env = {
+    PATH: "C:\\missing-bin",
+    PATHEXT: ".EXE;.CMD;.BAT;.COM",
+  };
+  const resolved = ensureCodexCommandEnv({
+    env,
+    homeDir: "C:\\Users\\tester",
+    platform: "win32",
+    arch: "x64",
+    vscodeExtensionRoots: [],
+    windowsAppProbe(command, args, options) {
+      calls.push({ command, args, options });
+      return { status: 0, stdout: "codex-cli 0.146.0-test\r\n", stderr: "" };
+    },
+    windowsPathExists: (candidate, platform) => candidate === appCommand && platform === "win32",
+  });
+
+  assert.deepEqual(resolved, { command: appCommand, source: "app-bundled" });
+  assert.equal(env.CODEX_CLI_PATH, appCommand);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, appCommand);
+  assert.deepEqual(calls[0].args, ["--version"]);
+  assert.equal(calls[0].options.timeout, 10_000);
+});
+
+test("Windows Codex App resolution rejects inaccessible and failing plugin runtimes", () => {
+  const appCommand = "C:\\Users\\tester\\.codex\\plugins\\.plugin-appserver\\codex.exe";
+  const common = {
+    env: {},
+    platform: "win32",
+    runtimePaths: [appCommand],
+    pathExists: () => true,
+  };
+  assert.equal(resolveWindowsCodexAppCommand({
+    ...common,
+    spawnSyncImpl: () => ({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: Object.assign(new Error("spawn EPERM"), { code: "EPERM" }),
+    }),
+  }), undefined);
+  assert.equal(resolveWindowsCodexAppCommand({
+    ...common,
+    spawnSyncImpl: () => ({ status: 7, stdout: "", stderr: "failed" }),
+  }), undefined);
+  assert.equal(resolveWindowsCodexAppCommand({
+    ...common,
+    spawnSyncImpl: () => { throw new Error("spawn failed"); },
+  }), undefined);
 });
 
 test("Codex command resolution uses the newest matching VS Code bundled runtime", async () => {
