@@ -39,7 +39,9 @@ export function createMemoryService(options: MemoryServiceOptions = {}): MemoryS
   const automaticWriteback = createAutomaticMemoryWritebackRuntime({
     diagnosticLogger: options.diagnosticLogger,
   });
-  const repositoryMemorySession = createRepositoryMemorySessionRuntime();
+  const repositoryMemorySession = createRepositoryMemorySessionRuntime({
+    onScopeUpgrade: automaticWriteback.discardForScopeUpgrade,
+  });
   const turnCoordinator = createMemoryTurnCoordinator({
     automaticWriteback: automaticWriteback.enqueue,
     now: options.now,

@@ -42,6 +42,15 @@ Please allow time for triage and remediation before public disclosure.
 - Initial Repo Memory builds use only the Git worktree returned by an
   authenticated Backend turn-start request. Backend or workspace-scope
   failures skip the build; client Hooks do not fall back to their local `cwd`.
+- MemoraX-backed Search, Add, and automatic writeback may downgrade malformed
+  or incomplete internal metadata in a direct `.git` directory to the
+  canonical workspace folder identity. The CLI exposes the fallback reason,
+  effective identity, and a user notice. Within the same live session, only
+  that degraded scope may upgrade to a verified Git scope with the same Base
+  User ID and canonical workspace root. Pending fallback writeback is
+  discarded during the upgrade rather than migrated or flushed. Git pointer
+  files, symlinked markers, unreadable metadata, and other conflicting session
+  scope remain fail closed.
 
 ### MemoraX memory traffic
 

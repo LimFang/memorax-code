@@ -5,7 +5,10 @@ import type {
   MemoryObservabilitySource,
 } from "./memory-observability.js";
 import { memoryWritebackBufferConfig } from "./memorax-config.js";
-import type { RepositoryMemoryScope } from "./repository-memory-scope.js";
+import {
+  repositoryMemoryScopeCanUpgradeFromDegradedGit,
+  type RepositoryMemoryScope,
+} from "./repository-memory-scope.js";
 import type { TraceContext } from "./trace-context.js";
 
 export type MemoryWritebackBufferDecision = {
@@ -14,6 +17,12 @@ export type MemoryWritebackBufferDecision = {
   idempotencyKey: string;
   messages: WritebackMessage[];
 };
+
+export type MemoryWritebackBufferScopeUpgrade = Readonly<{
+  client: MemoryWritebackBufferDecision["client"];
+  sessionKey: string;
+  currentScope: RepositoryMemoryScope;
+}>;
 
 export type MemoryWritebackBufferedDecision = MemoryWritebackBufferDecision & {
   dedupeKeys: string[];
@@ -63,6 +72,7 @@ export type MemoryWritebackBufferRuntime = {
     options: MemoryWritebackBufferOptions,
     deps: MemoryWritebackBufferDeps,
   ): void;
+  discardForScopeUpgrade(upgrade: MemoryWritebackBufferScopeUpgrade): number;
   flushAll(flushReason: string): number;
   close(): void;
 };
@@ -106,6 +116,9 @@ export function createMemoryWritebackBufferRuntime(): MemoryWritebackBufferRunti
     enqueue(decision, options, deps) {
       enqueueMemoryWritebackBufferForRuntime(writebackBuffers, decision, options, deps);
     },
+    discardForScopeUpgrade(upgrade) {
+      return discardDegradedGitBuffersForUpgrade(writebackBuffers, upgrade);
+    },
     flushAll(flushReason) {
       let flushed = 0;
       for (const [bufferKey, buffer] of [...writebackBuffers.entries()]) {
@@ -138,6 +151,14 @@ function enqueueMemoryWritebackBufferForRuntime(
   const env = options.env ?? process.env;
   const config = memoryWritebackBufferConfig(env);
   if (!options.repositoryScope) return;
+  discardDegradedGitBuffersForUpgrade(
+    writebackBuffers,
+    {
+      client: decision.client,
+      sessionKey: decision.sessionKey,
+      currentScope: options.repositoryScope,
+    },
+  );
   const bufferKey = memoryWritebackBufferKey(
     decision.client,
     decision.sessionKey,
@@ -202,6 +223,30 @@ function enqueueMemoryWritebackBufferForRuntime(
   } else {
     resetMemoryWritebackIdleTimer(writebackBuffers, buffer, config.maxAgeMs, deps);
   }
+}
+
+function discardDegradedGitBuffersForUpgrade(
+  writebackBuffers: Map<string, MemoryWritebackBuffer>,
+  upgrade: MemoryWritebackBufferScopeUpgrade,
+): number {
+  let discarded = 0;
+  for (const [bufferKey, buffer] of writebackBuffers.entries()) {
+    if (
+      buffer.client !== upgrade.client
+      || buffer.sessionKey !== upgrade.sessionKey
+      || !repositoryMemoryScopeCanUpgradeFromDegradedGit(buffer.repositoryScope, upgrade.currentScope)
+    ) continue;
+    writebackBuffers.delete(bufferKey);
+    if (buffer.timer) buffer.clock.clearTimeout(buffer.timer);
+    buffer.deps.debug("memory.automatic_writeback", {
+      scheduled: false,
+      skipReason: "buffer_scope_upgraded",
+      sessionKey: upgrade.sessionKey,
+      discardedTurnCount: buffer.turns.length,
+    });
+    discarded += 1;
+  }
+  return discarded;
 }
 
 function createMemoryWritebackBuffer(

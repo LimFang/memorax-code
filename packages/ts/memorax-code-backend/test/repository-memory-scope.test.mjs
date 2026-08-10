@@ -11,6 +11,7 @@ import {
   resolveConfiguredRepositoryMemoryForSession,
 } from "../dist/repository-memory-context.js";
 import {
+  repositoryMemoryScopeCanUpgradeFromDegradedGit,
   repositoryMemoryScopeContainsWorkspace,
   repositoryMemoryScopesMatch,
   resolveRepositoryMemoryScope,
@@ -393,14 +394,38 @@ test("the nearest Git marker isolates nested repositories", async () => {
   assert.equal(result.scope.boundWorkspaceRoot, await realpath(nested));
 });
 
-test("present but malformed or incomplete Git metadata fails closed", async () => {
+test("malformed or incomplete direct Git metadata falls back to the workspace folder scope", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-workspace-invalid-git-"));
   const emptyDirectory = join(root, "empty-directory");
+  const malformedDirectory = join(root, "malformed-directory");
+  await mkdir(join(emptyDirectory, ".git"), { recursive: true });
+  await mkdir(join(malformedDirectory, ".git", "objects"), { recursive: true });
+  await mkdir(join(malformedDirectory, ".git", "refs"), { recursive: true });
+  await writeFile(join(malformedDirectory, ".git", "HEAD"), "not-a-ref\n", "utf8");
+
+  for (const workspaceRoot of [emptyDirectory, malformedDirectory]) {
+    const nested = join(workspaceRoot, "src");
+    await mkdir(nested, { recursive: true });
+    const result = await resolveRepositoryMemoryScope({ workspaceRoot: nested, baseUserId: "alice" });
+    const workspaceName = workspaceRoot === emptyDirectory ? "empty-directory" : "malformed-directory";
+
+    assert.equal(result.ok, true);
+    assert.equal(result.scope.scopeKind, "local-directory");
+    assert.equal(result.scope.identitySource, "workspace-directory");
+    assert.equal(result.scope.repositorySlug, workspaceName);
+    assert.equal(result.scope.effectiveUserId, `alice@${workspaceName}`);
+    assert.equal(result.scope.fallbackReason, "git_metadata_invalid");
+    assert.equal(result.scope.boundWorkspaceRoot, await realpath(workspaceRoot));
+    assert.equal(await repositoryMemoryScopeContainsWorkspace(result.scope, nested), true);
+  }
+});
+
+test("malformed Git pointer metadata remains fail closed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-workspace-invalid-git-pointer-"));
   const malformedFile = join(root, "malformed-file");
   const missingTarget = join(root, "missing-target");
   const invalidCommonDir = join(root, "invalid-common-dir");
   const unusableName = join(root, "unusable-name");
-  await mkdir(join(emptyDirectory, ".git"), { recursive: true });
   await mkdir(malformedFile, { recursive: true });
   await writeFile(join(malformedFile, ".git"), "gitdir: one\ngitdir: two\n", "utf8");
   await mkdir(missingTarget, { recursive: true });
@@ -417,7 +442,6 @@ test("present but malformed or incomplete Git metadata fails closed", async () =
   await writeFile(join(unusableName, ".git"), `gitdir: ${join(unnamedSource, ".git")}\n`, "utf8");
 
   for (const workspaceRoot of [
-    emptyDirectory,
     malformedFile,
     missingTarget,
     invalidCommonDir,
@@ -738,6 +762,113 @@ test("a non-Git session remains mismatched after its workspace becomes a reposit
   assert.equal(repositoryTurn.reason, "workspace_scope_mismatch");
   assert.equal(remainsBlocked.ok, false);
   assert.equal(remainsBlocked.reason, "workspace_scope_mismatch");
+});
+
+test("a non-Git session cannot silently acquire degraded Git fallback provenance", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-workspace-local-degraded-git-"));
+  const home = join(root, "home");
+  const workspace = join(root, "notes");
+  await mkdir(workspace, { recursive: true });
+  const owner = {};
+  const env = memoryEnv(home);
+
+  const initial = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "local-to-degraded-git",
+    workspaceRoot: workspace,
+    memoraxCodeHome: home,
+    env,
+  });
+  await mkdir(join(workspace, ".git"), { recursive: true });
+  const degradedTurn = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "local-to-degraded-git",
+    workspaceRoot: workspace,
+    memoraxCodeHome: home,
+    env,
+  });
+  const freshSession = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "fresh-degraded-git",
+    workspaceRoot: workspace,
+    memoraxCodeHome: home,
+    env,
+  });
+
+  assert.equal(initial.ok, true);
+  assert.equal(initial.memory.scope.fallbackReason, undefined);
+  assert.equal(degradedTurn.ok, false);
+  assert.equal(degradedTurn.reason, "workspace_scope_mismatch");
+  assert.equal(freshSession.ok, true);
+  assert.equal(freshSession.memory.scope.fallbackReason, "git_metadata_invalid");
+});
+
+test("a degraded Git-directory session upgrades when Git metadata is repaired", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-workspace-degraded-git-repair-"));
+  const home = join(root, "home");
+  const workspace = join(root, "quant");
+  const nested = join(workspace, "src");
+  await mkdir(join(workspace, ".git"), { recursive: true });
+  await mkdir(nested, { recursive: true });
+  const owner = {};
+  const env = memoryEnv(home);
+
+  const initial = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "degraded-to-git",
+    workspaceRoot: workspace,
+    memoraxCodeHome: home,
+    env,
+  });
+  const nestedTurn = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "degraded-to-git",
+    workspaceRoot: nested,
+    memoraxCodeHome: home,
+    env,
+  });
+  await createGitRepository(workspace, [
+    ["origin", "https://github.com/example-org/quant.git"],
+  ]);
+  const repairedTurn = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "degraded-to-git",
+    workspaceRoot: workspace,
+    memoraxCodeHome: home,
+    env,
+  });
+
+  assert.equal(initial.ok, true);
+  assert.equal(initial.memory.scope.scopeKind, "local-directory");
+  assert.equal(initial.memory.scope.fallbackReason, "git_metadata_invalid");
+  assert.equal(initial.memory.scope.effectiveUserId, "alice@quant");
+  assert.equal(nestedTurn.ok, true);
+  assert.equal(nestedTurn.memory.scope.repositoryKey, initial.memory.scope.repositoryKey);
+  assert.equal(repairedTurn.ok, true);
+  assert.equal(repairedTurn.memory.scope.scopeKind, "git-repository");
+  assert.equal(repairedTurn.memory.scope.fallbackReason, undefined);
+  assert.equal(repairedTurn.memory.scope.effectiveUserId, "alice@quant");
+  assert.equal(
+    repositoryMemoryScopeCanUpgradeFromDegradedGit(initial.memory.scope, repairedTurn.memory.scope),
+    true,
+  );
+
+  const subsequentTurn = await resolveConfiguredRepositoryMemoryForSession({
+    owner,
+    client: "codex",
+    sessionId: "degraded-to-git",
+    workspaceRoot: nested,
+    memoraxCodeHome: home,
+    env,
+  });
+  assert.equal(subsequentTurn.ok, true);
+  assert.equal(subsequentTurn.memory.scope.repositoryKey, repairedTurn.memory.scope.repositoryKey);
 });
 
 test("case-distinct physical roots do not pass containment when the filesystem permits", async (t) => {

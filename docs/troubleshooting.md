@@ -150,11 +150,28 @@ normalized folder name. Resolution never falls back to the bare base user ID.
 A live Codex or Claude Code session remains pinned to the repository or local
 workspace resolved at the start of the session. Starting the client from a
 parent workspace and then entering a nested Git repository does not rebind the
-session. If Search or Add reports `workspace_scope_mismatch` or
-`workspace_scope_unavailable`, start a new session from the target repository
-or local workspace. For an unavailable scope, also verify that its `.git`
-metadata is readable and valid. These failures stop Search or Add before any
-request is sent to MemoraX.
+session. The only in-session scope upgrade is from a direct `.git` directory
+whose internal metadata was malformed or incomplete to a verified Git
+repository at the same canonical workspace root and for the same Base User ID.
+
+During that degraded state, MemoraX Code reports
+`workspaceScopeFallbackReason: git_metadata_invalid` for manual CLI operations
+and continues Search and Add with the normalized local folder name. Automatic
+writeback also continues under that fallback scope without interrupting the
+client task. The reported `effectiveUserId` identifies the fallback namespace
+and may differ from the restored Git repository namespace. Repair the
+repository or restore valid `.git` metadata, and later Search, Add, and
+automatic writeback in the same client session automatically use the verified
+Git repository scope. Memories already accepted under the fallback namespace
+are not migrated. Any unsent automatic-writeback buffer for the fallback scope
+is discarded instead of being flushed into either namespace.
+
+Invalid or unreadable Git marker files, symlinked markers, and session scope
+conflicts do not use this fallback. If Search or Add reports
+`workspace_scope_mismatch` or `workspace_scope_unavailable`, start a new
+session from the target repository or local workspace and verify that its
+`.git` metadata is readable and valid. These failures stop Search or Add before
+any request is sent to MemoraX.
 
 Codex projectless tasks under its canonical dated-task location intentionally
 use the shared `Codex-General` memory name. Open a task in a real workspace

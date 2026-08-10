@@ -89,6 +89,51 @@ test("Claude Hook writeback uses exact transcript content", async () => {
   }
 });
 
+test("Claude Hook uses repaired Git scope for same-session automatic writeback", async () => {
+  const fixture = await transcriptFixture("Repair the Git metadata.", "Git metadata repaired.");
+  const degradedScope = {
+    ...SCOPE,
+    fallbackReason: "git_metadata_invalid",
+  };
+  const repairedScope = {
+    ...SCOPE,
+    repositoryKey: "git-key:claude-hook",
+    identitySource: "origin-remote",
+    scopeKind: "git-repository",
+  };
+  let currentScope = degradedScope;
+  const writebacks = [];
+  const runtime = createClaudeMemoryHookRuntime({
+    automaticWriteback: collectAcceptedWriteback(writebacks),
+    env: TRACE_DISABLED_ENV,
+    repositoryMemorySession: {
+      async resolve() {
+        return { ok: true, memory: { config: {}, scope: currentScope } };
+      },
+      close() {},
+    },
+    transcriptReadAttempts: 1,
+  });
+  try {
+    await runtime.recordTurnStart(turnStart(fixture.path));
+    currentScope = repairedScope;
+    assert.deepEqual(await runtime.writeback({
+      version: 1,
+      client: "claude-code",
+      sessionId: SESSION_ID,
+      promptId: PROMPT_ID,
+      transcriptPath: fixture.path,
+      cwd: "/workspace/claude-hook",
+      lastAssistantMessage: "Git metadata repaired.",
+    }), { ok: true, scheduled: true });
+    assert.equal(writebacks.length, 1);
+    assert.strictEqual(writebacks[0].repositoryScope, repairedScope);
+  } finally {
+    runtime.close();
+    await fixture.remove();
+  }
+});
+
 test("Claude Hook writeback never falls back to an active or latest prompt", async () => {
   const first = await transcriptFixture("First prompt.", "First answer.", { promptId: "prompt-first" });
   const second = await transcriptFixture("Second prompt.", "Second answer.", { promptId: "prompt-second" });

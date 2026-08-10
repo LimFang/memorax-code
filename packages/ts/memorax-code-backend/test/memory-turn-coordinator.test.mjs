@@ -68,6 +68,47 @@ test("memory turn coordinator preserves materialized Codex content and pinned sc
   }
 });
 
+test("memory turn coordinator uses repaired Git scope after a degraded turn start", async () => {
+  const writebacks = [];
+  const coordinator = createMemoryTurnCoordinator({
+    automaticWriteback(options) {
+      writebacks.push(options);
+      return { accepted: true };
+    },
+    cleanupIntervalMs: 60_000,
+  });
+  const degradedScope = {
+    ...repositoryScope("quant"),
+    fallbackReason: "git_metadata_invalid",
+  };
+  const gitScope = {
+    ...repositoryScope("quant"),
+    repositoryKey: "git-key:quant",
+    identitySource: "origin-remote",
+    scopeKind: "git-repository",
+  };
+  try {
+    coordinator.recordTurnStart(turnStart("codex", degradedScope));
+    const result = await coordinator.completeMaterializedTurn({
+      key: turnKey("codex"),
+      metadata: coordinator.getTurn(turnKey("codex")),
+      resolveRepositoryMemory: async () => configuredMemory(gitScope),
+      userText: "Repair the repository metadata.",
+      assistantText: "The repository metadata is repaired.",
+      writeback: { client: "codex", sessionKey: "shared-session" },
+    });
+
+    assert.deepEqual(result, {
+      scheduled: true,
+      metadataDisposition: "consumed",
+    });
+    assert.equal(writebacks.length, 1);
+    assert.strictEqual(writebacks[0].repositoryScope, gitScope);
+  } finally {
+    coordinator.close();
+  }
+});
+
 test("memory turn coordinator requires materialized client content", async () => {
   const writebacks = [];
   const coordinator = createMemoryTurnCoordinator({

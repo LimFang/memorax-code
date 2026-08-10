@@ -3,6 +3,7 @@ import {
   type MemoraxAdapterConfig,
 } from "./memorax-config.js";
 import {
+  repositoryMemoryScopeCanUpgradeFromDegradedGit,
   repositoryMemoryScopeContainsWorkspace,
   repositoryMemoryScopeKind,
   repositoryMemoryScopesMatch,
@@ -54,14 +55,31 @@ export type RepositoryMemorySessionRuntime = {
   close(): void;
 };
 
+export type RepositoryMemorySessionScopeUpgrade = Readonly<{
+  client: MemoryHookClient;
+  sessionId: string;
+  previousScope: RepositoryMemoryScope;
+  currentScope: RepositoryMemoryScope;
+}>;
+
+export type RepositoryMemorySessionRuntimeOptions = {
+  onScopeUpgrade?: (upgrade: RepositoryMemorySessionScopeUpgrade) => void;
+};
+
 const sessionScopes = new WeakMap<object, Map<string, RepositoryMemorySessionBinding>>();
 const scopeResolutionQueues = new WeakMap<object, Map<string, Promise<void>>>();
 
-export function createRepositoryMemorySessionRuntime(): RepositoryMemorySessionRuntime {
+export function createRepositoryMemorySessionRuntime(
+  options: RepositoryMemorySessionRuntimeOptions = {},
+): RepositoryMemorySessionRuntime {
   const owner = {};
   return {
     async resolve(input) {
-      return await resolveConfiguredRepositoryMemoryForSession({ owner, ...input });
+      return await resolveConfiguredRepositoryMemoryForSession({
+        owner,
+        onScopeUpgrade: options.onScopeUpgrade,
+        ...input,
+      });
     },
     close() {
       sessionScopes.delete(owner);
@@ -90,7 +108,7 @@ export async function resolveConfiguredRepositoryMemory(input: {
 }
 
 export async function resolveConfiguredRepositoryMemoryForSession(
-  input: RepositoryMemorySessionRequest & { owner: object },
+  input: RepositoryMemorySessionRequest & RepositoryMemorySessionRuntimeOptions & { owner: object },
 ): Promise<ConfiguredRepositoryMemoryResult> {
   const sourceEnv = input.env ?? process.env;
   const env = input.memoraxCodeHome ? { ...sourceEnv, MEMORAX_CODE_HOME: input.memoraxCodeHome } : sourceEnv;
@@ -157,6 +175,16 @@ export async function resolveConfiguredRepositoryMemoryForSession(
     if (!scopeResult.ok) return scopeResult;
     if (cached?.scope.baseUserId === configResult.config.userId) {
       if (!repositoryMemoryScopesMatch(cached.scope, scopeResult.scope)) {
+        if (repositoryMemoryScopeCanUpgradeFromDegradedGit(cached.scope, scopeResult.scope)) {
+          input.onScopeUpgrade?.({
+            client: input.client,
+            sessionId,
+            previousScope: cached.scope,
+            currentScope: scopeResult.scope,
+          });
+          cached.scope = scopeResult.scope;
+          return { ok: true, memory: { config: configResult.config, scope: scopeResult.scope } };
+        }
         cached.mismatch = true;
         return repositoryScopeMismatch();
       }

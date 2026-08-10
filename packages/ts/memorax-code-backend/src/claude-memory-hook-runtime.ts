@@ -11,6 +11,7 @@ import {
   createAutomaticMemoryWritebackRuntime,
   type AutomaticMemoryWritebackEnqueue,
   type AutomaticMemoryWritebackRejectionReason,
+  type AutomaticMemoryWritebackRuntime,
 } from "./automatic-memory-writeback.js";
 import type {
   ClaudeTurnStartCommand,
@@ -97,6 +98,7 @@ export function createClaudeMemoryHookRuntime(
   const now = options.now ?? (() => Date.now());
   const automaticWritebackRuntime: {
     enqueue: AutomaticMemoryWritebackEnqueue;
+    discardForScopeUpgrade?: AutomaticMemoryWritebackRuntime["discardForScopeUpgrade"];
     close?: () => void;
   } | undefined = options.turnCoordinator
     ? undefined
@@ -111,7 +113,9 @@ export function createClaudeMemoryHookRuntime(
     cleanupIntervalMs: options.cleanupIntervalMs,
   });
   const ownsTurnCoordinator = options.turnCoordinator === undefined;
-  const repositoryMemorySession = options.repositoryMemorySession ?? createRepositoryMemorySessionRuntime();
+  const repositoryMemorySession = options.repositoryMemorySession ?? createRepositoryMemorySessionRuntime({
+    onScopeUpgrade: automaticWritebackRuntime?.discardForScopeUpgrade,
+  });
   const ownsRepositoryMemorySession = options.repositoryMemorySession === undefined;
   const automaticRetrievalPrompts = new Set<string>();
   const automaticRetrievalPromptLimit = positiveInteger(options.maxEntries, 256);

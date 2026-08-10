@@ -42,7 +42,9 @@ type MemoryCliResult = {
   effectiveUserId?: string;
   workspaceScope?: "bound" | "unavailable";
   workspaceScopeReason?: string;
+  workspaceScopeFallbackReason?: "git_metadata_invalid";
   userAction?: string;
+  userNotice?: string;
   searchEnabled?: boolean;
   addEnabled?: boolean;
   config?: unknown;
@@ -314,7 +316,13 @@ function memoryCliRepositoryFailure(
 
 function memoryCliIdentityFields(memory: ConfiguredRepositoryMemory): Pick<
   MemoryCliResult,
-  "baseUserId" | "workspace" | "scopeKind" | "effectiveUserId" | "workspaceScope"
+  | "baseUserId"
+  | "workspace"
+  | "scopeKind"
+  | "effectiveUserId"
+  | "workspaceScope"
+  | "workspaceScopeFallbackReason"
+  | "userNotice"
 > {
   return {
     baseUserId: memory.config.userId,
@@ -323,6 +331,10 @@ function memoryCliIdentityFields(memory: ConfiguredRepositoryMemory): Pick<
       scopeKind: repositoryMemoryScopeKind(memory.scope),
       effectiveUserId: memory.scope.effectiveUserId,
       workspaceScope: "bound" as const,
+      ...(memory.scope.fallbackReason === "git_metadata_invalid" ? {
+        workspaceScopeFallbackReason: memory.scope.fallbackReason,
+        userNotice: `Git repository metadata is invalid or incomplete. MemoraX Code is using the local folder name "${memory.scope.repositorySlug}" for memory scope, so Search and Add use "${memory.scope.effectiveUserId}". Repair the repository or restore valid .git metadata. Later Search, Add, and automatic writeback in the same client session will automatically use the restored Git repository scope.`,
+      } : {}),
     } : {
       workspaceScope: "unavailable" as const,
     }),
