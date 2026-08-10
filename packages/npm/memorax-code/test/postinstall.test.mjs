@@ -1022,6 +1022,32 @@ test("postinstall reinstall re-detects a newly available Claude runtime", async 
   }
 });
 
+test("postinstall update re-detects a legacy empty client selection", async () => {
+  const run = await runPostinstall({
+    claudeAvailable: false,
+    memoraxCodeConfig: [
+      "[clients]",
+      "codex = false",
+      "claude = false",
+      "",
+    ].join("\n"),
+    npmCommand: "update",
+  });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.log, /^codex --version$/m);
+    assert.match(run.result.stderr, /Claude Code runtime was not detected; skipping its adapter setup/);
+    assert.match(run.result.stderr, /Detected supported client runtimes\. Configuring MemoraX Code for Codex only\./);
+    assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
+    assert.match(run.log, /^memorax-code start --clients codex$/m);
+    assert.match(run.log, /^memorax-code status --clients codex$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(config, /\[clients\]\ncodex = true\nclaude = false/);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
 test("postinstall update preserves client intent while skipping an uninstalled Claude runtime", async () => {
   const run = await runPostinstall({
     claudeAvailable: false,

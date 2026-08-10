@@ -52,7 +52,10 @@ const scriptedAnswers = (canPrompt() || canPromptForHookUpdate()) && process.std
   ? parseScriptedAnswers(readFileSync(0, "utf8"))
   : undefined;
 const previousClients = readPersistedClientSelection();
-const preservePreviousClients = updatePostinstall && previousClients !== undefined;
+const redetectEmptyPreviousClients = updatePostinstall && previousClients?.length === 0;
+const preservePreviousClients = updatePostinstall
+  && previousClients !== undefined
+  && !redetectEmptyPreviousClients;
 if (seedMissingMemoraxCodeConfig() === "failed") {
   printPostinstallSummary("not-verified");
   process.exit(0);

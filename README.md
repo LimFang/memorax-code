@@ -156,8 +156,9 @@ memorax-code update
 ```
 
 The command follows the installed release channel and preserves configuration.
-Restart or refresh Codex and Claude Code when a release changes plugin assets
-or skills.
+If a legacy installation left both clients disabled, the update re-detects
+runnable clients and enables the integrations it finds. Restart or refresh
+Codex and Claude Code when a release changes plugin assets or skills.
 
 ## Uninstall
 
