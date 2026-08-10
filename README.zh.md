@@ -107,7 +107,7 @@ cd test-repo
 | **后台写入记忆** | 任务完成后，在后台提取可复用知识并写入 Coding Memory。 |
 | **用户偏好延续** | 在 User Profile 中记录用户偏好，并按设定周期将其带入后续任务。 |
 | **Procedure 自动复用** | 记录可复用的任务流程，并在后续任务中自动提醒 Agent 按流程执行。 |
-| **Repo Memory 后台整理** | 当 Backend 确认的 Git worktree 缺少 `.repo_memory/PROFILE.md` 时启动首次后台构建，已有 Repo Memory 后再按策略更新。 |
+| **Repo Memory 后台整理** | 在后台整理仓库结构、代码入口和历史证据，并按策略自动更新，避免反复搜索和总结。 |
 | **主动记忆控制** | 使用内置的 MemoraX Code Skill（Codex 中为 `$memorax-code`，Claude Code 中为 `/memorax-code`）或 CLI，主动查找和添加记忆。 |
 | **Hook 集成** | 借助 Codex 和 Claude Code 的 Hook 触发记忆检索、提醒和写入。 |
 | **本地可视化** | 通过本地 Memory Viewer 查看活动统计、召回与写入状态。 |
