@@ -76,14 +76,17 @@ test("Codex command resolution uses the desktop App bundled runtime without a PA
   }
 });
 
-test("Codex command resolution uses the registered Windows App bundled runtime", () => {
-  const installLocation = "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.727.6591.0_x64__test";
-  const appCommand = win32.join(installLocation, "app", "resources", "codex.exe");
+test("Codex command resolution uses the runnable Windows App plugin runtime", () => {
+  const appCommand = win32.join(
+    "C:\\Users\\tester\\.codex",
+    "plugins",
+    ".plugin-appserver",
+    "codex.exe",
+  );
   const calls = [];
   const env = {
     PATH: "C:\\missing-bin",
     PATHEXT: ".EXE;.CMD;.BAT;.COM",
-    SystemRoot: "C:\\Windows",
   };
   const resolved = ensureCodexCommandEnv({
     env,
@@ -91,9 +94,9 @@ test("Codex command resolution uses the registered Windows App bundled runtime",
     platform: "win32",
     arch: "x64",
     vscodeExtensionRoots: [],
-    windowsAppQuery(command, args, options) {
+    windowsAppProbe(command, args, options) {
       calls.push({ command, args, options });
-      return { status: 0, stdout: `\uFEFF${installLocation}\r\n`, stderr: "" };
+      return { status: 0, stdout: "codex-cli 0.146.0-test\r\n", stderr: "" };
     },
     windowsPathExists: (candidate, platform) => candidate === appCommand && platform === "win32",
   });
@@ -101,25 +104,35 @@ test("Codex command resolution uses the registered Windows App bundled runtime",
   assert.deepEqual(resolved, { command: appCommand, source: "app-bundled" });
   assert.equal(env.CODEX_CLI_PATH, appCommand);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].command, "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
-  assert.deepEqual(calls[0].args.slice(0, 4), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]);
-  assert.match(calls[0].args[4], /Get-AppxPackage -Name 'OpenAI\.Codex'/);
+  assert.equal(calls[0].command, appCommand);
+  assert.deepEqual(calls[0].args, ["--version"]);
   assert.equal(calls[0].options.timeout, 10_000);
 });
 
-test("Windows Codex App resolution ignores failed and malformed package queries", () => {
+test("Windows Codex App resolution rejects inaccessible and failing plugin runtimes", () => {
+  const appCommand = "C:\\Users\\tester\\.codex\\plugins\\.plugin-appserver\\codex.exe";
   const common = {
-    env: { SystemRoot: "C:\\Windows" },
+    env: {},
     platform: "win32",
+    runtimePaths: [appCommand],
     pathExists: () => true,
   };
   assert.equal(resolveWindowsCodexAppCommand({
     ...common,
-    spawnSyncImpl: () => ({ status: 1, stdout: "", stderr: "failed" }),
+    spawnSyncImpl: () => ({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: Object.assign(new Error("spawn EPERM"), { code: "EPERM" }),
+    }),
   }), undefined);
   assert.equal(resolveWindowsCodexAppCommand({
     ...common,
-    spawnSyncImpl: () => ({ status: 0, stdout: "relative\\OpenAI.Codex\r\n", stderr: "" }),
+    spawnSyncImpl: () => ({ status: 7, stdout: "", stderr: "failed" }),
+  }), undefined);
+  assert.equal(resolveWindowsCodexAppCommand({
+    ...common,
+    spawnSyncImpl: () => { throw new Error("spawn failed"); },
   }), undefined);
 });
 
