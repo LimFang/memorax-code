@@ -21,14 +21,9 @@ npm install -g @memorax/memorax-code --foreground-scripts
 Keep `--foreground-scripts` so npm displays the complete setup.
 
 The installer automatically detects the Codex and Claude Code clients available
-on the machine and configures each client it finds. Codex detection covers its
-CLI, the Codex desktop app runtime on macOS and Windows, and the official VS
-Code extension. Follow the prompts to enter your MemoraX Base User ID,
-preferred language, and API key. When Codex is detected, review and approve
-its Hook activation.
-
-On Windows, open the Codex desktop app once before installing so it can
-materialize its runnable local plugin runtime.
+on the machine and configures each client it finds. Follow the prompts to enter
+your MemoraX Base User ID, preferred language, and API key. When Codex is
+detected, review and approve its Hook activation.
 
 Entering the MemoraX credentials after the installer's disclosure enables the
 core memory features and automatic writeback. If setup is skipped or cannot
