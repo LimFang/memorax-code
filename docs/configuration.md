@@ -60,9 +60,14 @@ disabled. The command-line override is:
 ```
 
 A normal npm install or reinstall refreshes `[clients]` from the runnable
-clients detected at that time. Update-mode postinstall runs preserve the
-existing selection so a package update does not re-enable an integration the
-user intentionally disabled.
+clients detected at that time. Update-mode postinstall runs preserve enabled
+clients and also probe each disabled client. An interactive update offers each
+runnable disabled integration for activation with a default of yes. Declining
+the prompt, or running non-interactively, keeps that integration disabled. A
+selected client that is temporarily unavailable also remains selected in the
+configuration instead of being permanently disabled. When an update newly
+enables Codex, it requests initial Hook activation after the client-selection
+prompt.
 
 Client selection controls plugin and Hook lifecycle only. It does not change
 Codex or Claude Code provider settings. `--clients none` runs the Backend

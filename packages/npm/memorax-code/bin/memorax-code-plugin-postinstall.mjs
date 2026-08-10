@@ -48,11 +48,10 @@ const codexCommand = codexRuntime.command;
 const claudeRuntime = ensureClaudeCommandEnv();
 const claudeCommand = claudeRuntime.command;
 const updatePostinstall = postinstallUpdateMode();
-const scriptedAnswers = (canPrompt() || canPromptForHookUpdate()) && process.stdin.isTTY !== true
+const scriptedAnswers = (canPrompt() || canPromptForUpdate()) && process.stdin.isTTY !== true
   ? parseScriptedAnswers(readFileSync(0, "utf8"))
   : undefined;
 const previousClients = readPersistedClientSelection();
-const preservePreviousClients = updatePostinstall && previousClients !== undefined;
 if (seedMissingMemoraxCodeConfig() === "failed") {
   printPostinstallSummary("not-verified");
   process.exit(0);
@@ -71,20 +70,31 @@ try {
   process.exit(0);
 }
 runCommonPreflight();
-const requestedClients = preservePreviousClients ? previousClients : ["codex", "claude"];
+const requestedClients = ["codex", "claude"];
 const codexPreflight = requestedClients.includes("codex") && !skipCodexPluginInstall
-  ? runCodexPreflight()
+  ? runCodexPreflight({
+      integrationSelected: !updatePostinstall
+        || previousClients === undefined
+        || previousClients.includes("codex"),
+    })
   : { ok: true, pluginCache: { marketplaceName: CLI_MARKETPLACE_NAME, versions: [] } };
 const claudePreflight = requestedClients.includes("claude") && !skipClaudeAdapterInstall
-  ? runClaudePreflight()
+  ? runClaudePreflight({
+      integrationSelected: !updatePostinstall
+        || previousClients === undefined
+        || previousClients.includes("claude"),
+    })
   : { ok: true };
-const installClients = requestedClients.filter((client) => {
+const detectedClients = requestedClients.filter((client) => {
   if (client === "codex") return !skipCodexPluginInstall && codexPreflight.ok;
   return !skipClaudeAdapterInstall && claudePreflight.ok;
 });
-const selectedClients = preservePreviousClients ? previousClients : installClients;
-if (preservePreviousClients) {
-  log(clientSelectionMessage(previousClients));
+const selectedClients = updatePostinstall && previousClients !== undefined
+  ? await chooseUpdateClients(previousClients, detectedClients, scriptedAnswers)
+  : detectedClients;
+const installClients = detectedClients.filter((client) => selectedClients.includes(client));
+if (updatePostinstall && previousClients !== undefined) {
+  log(clientSelectionMessage(selectedClients));
 } else {
   log(detectedClientMessage(installClients));
 }
@@ -111,7 +121,11 @@ if (memoraxConfigResult === "configured") {
 }
 const codexClientEnabled = installClients.includes("codex");
 const claudeClientEnabled = installClients.includes("claude");
-const codexHooksBeforeUpdate = codexClientEnabled && updatePostinstall
+const codexClientNewlyEnabled = codexClientEnabled
+  && updatePostinstall
+  && previousClients !== undefined
+  && !previousClients.includes("codex");
+const codexHooksBeforeUpdate = codexClientEnabled && updatePostinstall && !codexClientNewlyEnabled
   ? inspectCodexPluginHooksForUpdate()
   : undefined;
 const result = codexClientEnabled
@@ -123,8 +137,13 @@ if (codexClientEnabled && result.status !== 0 && process.env.npm_lifecycle_event
 }
 
 if (codexClientEnabled && result.status === 0) {
-  if (updatePostinstall) await maybeTrustUpdatedCodexPluginHooks(scriptedAnswers, codexHooksBeforeUpdate);
-  else await maybeActivateCodexPluginHooks(scriptedAnswers);
+  if (codexClientNewlyEnabled) {
+    await maybeActivateCodexPluginHooks(scriptedAnswers, { updatePrompt: true });
+  } else if (updatePostinstall) {
+    await maybeTrustUpdatedCodexPluginHooks(scriptedAnswers, codexHooksBeforeUpdate);
+  } else {
+    await maybeActivateCodexPluginHooks(scriptedAnswers);
+  }
 }
 const skipCodexAdapter = !codexClientEnabled;
 const skipClaudeAdapter = !claudeClientEnabled;
@@ -193,6 +212,45 @@ async function maybeConfigureMemoraxMemory(scriptedAnswers) {
   } finally {
     rl?.close();
   }
+}
+
+async function chooseUpdateClients(previousClients, detectedClients, scriptedAnswers) {
+  const selected = new Set(previousClients);
+  const availableDisabledClients = detectedClients.filter((client) => !selected.has(client));
+  if (availableDisabledClients.length === 0) return [...previousClients];
+
+  if (!canPromptForUpdate()) {
+    for (const client of availableDisabledClients) {
+      const label = client === "codex" ? "Codex" : "Claude Code";
+      log(`${label} runtime is available, but its integration remains disabled because this update cannot prompt. Rerun \`memorax-code update\` from an interactive terminal to choose whether to enable it.`);
+    }
+    return [...previousClients];
+  }
+
+  let rl;
+  try {
+    for (const client of availableDisabledClients) {
+      const label = client === "codex" ? "Codex" : "Claude Code";
+      const question = `${label} runtime is available, but its integration is disabled in [clients]. Enable it now? [Y/n]`;
+      let answer;
+      if (scriptedAnswers) {
+        log(question);
+        answer = String(scriptedAnswers.shift() ?? "").trim();
+      } else {
+        rl ??= createInterface({ input: process.stdin, output: process.stderr });
+        answer = (await rl.question(`${PREFIX} ${question} `)).trim();
+      }
+      if (/^n(?:o)?$/i.test(answer)) {
+        log(`Keeping the ${label} integration disabled.`);
+      } else {
+        selected.add(client);
+        logGreen(`Enabling the ${label} integration.`);
+      }
+    }
+  } finally {
+    rl?.close();
+  }
+  return ["codex", "claude"].filter((client) => selected.has(client));
 }
 
 async function configureMemoraxMemoryFromAnswers(answers) {
@@ -351,7 +409,7 @@ async function maybeTrustUpdatedCodexPluginHooks(scriptedAnswers, previousHooks)
   if (report.hooks.length === 0) return "unchanged";
 
   printUpdatedCodexHooks(report.hooks, previousHooks);
-  if (!canPromptForHookUpdate()) {
+  if (!canPromptForUpdate()) {
     warnUpdatedHookTrustSkipped("This update is running without an interactive terminal, so the new or changed Hooks remain untrusted.");
     return "skipped";
   }
@@ -471,8 +529,8 @@ function warnUpdatedHookTrustSkipped(message) {
   logRed("Review and authorize the current MemoraX Code Codex Hooks with `memorax-code codex-plugin trust-hooks`.");
 }
 
-async function maybeActivateCodexPluginHooks(scriptedAnswers) {
-  if (!canPrompt()) {
+async function maybeActivateCodexPluginHooks(scriptedAnswers, { updatePrompt = false } = {}) {
+  if (!(updatePrompt ? canPromptForUpdate() : canPrompt())) {
     log("Codex hook activation was not prompted. Run `memorax-code codex-plugin activate --yes` later to activate and trust MemoraX Code Codex Adapter hooks.");
     return "skipped";
   }
@@ -513,7 +571,7 @@ function canPrompt() {
   return canPromptOnStderr();
 }
 
-function canPromptForHookUpdate() {
+function canPromptForUpdate() {
   return updatePostinstall && canPromptOnStderr();
 }
 
@@ -706,7 +764,7 @@ function tomlString(value) {
 function runCommonPreflight() {
   log("Checking local install state...");
   if (updatePostinstall) {
-    log("Package update detected; refreshing MemoraX Code assets without interactive setup prompts.");
+    log("Package update detected; refreshing MemoraX Code assets and checking client availability.");
   }
   const memoraxCodeVersion = runNodeMemoraxCodeCommand(["--version"], { print: false });
   log(`MemoraX Code backend package: ${commandSummary(memoraxCodeVersion) ?? packageVersionSummary()}`);
@@ -719,7 +777,7 @@ function runCommonPreflight() {
   return {};
 }
 
-function runCodexPreflight() {
+function runCodexPreflight({ integrationSelected = true } = {}) {
   const version = runExternalCommand(codexCommand, ["--version"], { print: false, timeout: 10_000 });
   const runtimeLabel = codexRuntime.source === "app-bundled"
     ? "Codex App runtime"
@@ -733,11 +791,13 @@ function runCodexPreflight() {
   const pluginCache = installedPluginCache();
   log(`Existing Codex plugin cache: ${pluginCache.versions.length > 0 ? `found (${pluginCache.versions.join(", ")})` : "not installed"}`);
   log(`Codex client process: ${codexClientRunning() ? "running" : "not detected"}`);
-  log("Keeping Codex provider config unchanged and enabling the shared memory hook integration.");
+  log(integrationSelected
+    ? "Keeping Codex provider config unchanged and enabling the shared memory hook integration."
+    : "Keeping Codex provider config unchanged while checking whether to enable its integration.");
   return { ok: true, pluginCache };
 }
 
-function runClaudePreflight() {
+function runClaudePreflight({ integrationSelected = true } = {}) {
   const version = runExternalCommand(claudeCommand, ["--version"], { print: false, timeout: 10_000 });
   const runtimeLabel = claudeRuntime.source === "app-bundled"
     ? "Claude Code App runtime"
@@ -746,7 +806,9 @@ function runClaudePreflight() {
       : "Claude CLI";
   log(`${runtimeLabel}: ${commandSummary(version) ?? "not runnable"}`);
   if (version.status !== 0) return { ok: false };
-  log("Keeping Claude Code provider config unchanged and enabling the shared memory Hook integration.");
+  log(integrationSelected
+    ? "Keeping Claude Code provider config unchanged and enabling the shared memory Hook integration."
+    : "Keeping Claude Code provider config unchanged while checking whether to enable its integration.");
   return { ok: true };
 }
 
