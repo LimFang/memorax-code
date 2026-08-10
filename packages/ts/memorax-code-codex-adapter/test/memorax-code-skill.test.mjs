@@ -69,6 +69,10 @@ test("memorax-code references keep authority and operation boundaries explicit",
   assert.match(memoraxSearch, /without executing Git/);
   assert.match(memoraxSearch, /genuine non-Git directories/);
   assert.match(memoraxSearch, /linked worktree of the bound repository is valid/);
+  assert.match(memoraxSearch, /`workspace_scope_mismatch` or `workspace_scope_unavailable`/);
+  assert.match(memoraxSearch, /search was not executed and no request was sent to MemoraX/);
+  assert.match(memoraxSearch, /present the CLI's `userAction`/);
+  assert.match(memoraxSearch, /Do not change the CLI working directory and retry/);
   assert.doesNotMatch(memoraxSearch, /--query-file/);
   assert.match(memoraxAdd, /CODE_AGENT_MEMORY/);
   assert.match(memoraxAdd, /Route user-owned ordered actions/);
@@ -76,6 +80,10 @@ test("memorax-code references keep authority and operation boundaries explicit",
   assert.match(memoraxAdd, /language of the user's current request/);
   assert.match(memoraxAdd, /preserve exact code, API, path, workflow, and project identifiers/);
   assert.match(memoraxAdd, /memorax-cli add[\s\S]*--memory '/);
+  assert.match(memoraxAdd, /`workspace_scope_mismatch` or `workspace_scope_unavailable`/);
+  assert.match(memoraxAdd, /memory was not submitted and no request was sent to MemoraX/);
+  assert.match(memoraxAdd, /present the CLI's `userAction`/);
+  assert.match(memoraxAdd, /Do not change the CLI working directory and retry/);
   assert.doesNotMatch(memoraxAdd, /--memory-file/);
   assert.match(repoRead, /## Retrieval Budget/);
   assert.match(repoRead, /Do not read repo memory again after `maintain` returns/);

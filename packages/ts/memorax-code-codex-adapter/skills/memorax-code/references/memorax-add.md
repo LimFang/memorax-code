@@ -71,6 +71,8 @@ anchors: stable/source/path' \
 
 If add fails, report the exact failure and do not retry automatically, bypass the CLI, or call MemoraX directly.
 
+If `memorax-cli add` reports `workspace_scope_mismatch` or `workspace_scope_unavailable`, do not bypass the scope. Do not change the CLI working directory and retry. Tell the user that the memory was not submitted and no request was sent to MemoraX, then present the CLI's `userAction` in natural language. Continue the current task using only live code and documentation.
+
 ## Exclusions
 
 Do not add secrets, credentials, private URLs, raw authorization headers, exact patches, target commits, hidden tests, target diffs, vulnerability details, exploit steps, copied source, long logs, stack traces, raw transcripts, temporary errors, or facts directly recoverable from current files and git history.

@@ -169,6 +169,97 @@ test("memory CLI rejects a nested repository outside the current turn scope", as
 
   assert.equal(result.ok, false);
   assert.match(result.error, /does not match the current Codex turn repository\/workspace scope/);
+  assert.equal(result.workspaceScope, "unavailable");
+  assert.equal(result.workspaceScopeReason, "workspace_scope_mismatch");
+  assert.equal(
+    result.userAction,
+    "Start a new Codex or Claude Code session from the target repository or local workspace.",
+  );
+  assert.equal(requestCount, 0);
+});
+
+test("memory CLI explains malformed Git scope failures before search or add sends a request", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-cli-invalid-git-"));
+  const workspace = join(root, "workspace");
+  await mkdir(join(workspace, ".git"), { recursive: true });
+  let requestCount = 0;
+  const env = {
+    MEMORAX_CODE_HOME: join(root, "memorax-code-home"),
+    MEMORAX_CODE_MEMORY_CLI_ADD_ENABLED: "true",
+    MEMORAX_CODE_MEMORAX_ENDPOINT: "http://memorax.test",
+    MEMORAX_CODE_MEMORAX_API_KEY: "secret",
+    MEMORAX_CODE_MEMORAX_USER_ID: "user-1",
+  };
+  const options = {
+    cwd: workspace,
+    env,
+    fetchImpl: async () => {
+      requestCount += 1;
+      return new Response("{}", { status: 200 });
+    },
+  };
+
+  const search = await runMemoryCli(["search", "--query", "must fail closed"], options);
+  const add = await runMemoryCli([
+    "add",
+    "--memory",
+    "Must preserve workspace scope.",
+    "--type",
+    "procedural",
+    "--reason",
+    "Record a verified scope invariant.",
+  ], options);
+
+  for (const result of [search, add]) {
+    assert.equal(result.ok, false);
+    assert.equal(result.workspaceScope, "unavailable");
+    assert.equal(result.workspaceScopeReason, "workspace_scope_unavailable");
+    assert.equal(
+      result.userAction,
+      "Start a new Codex or Claude Code session from the target repository or local workspace. If the problem continues, make sure its .git metadata is readable and valid.",
+    );
+  }
+  assert.equal(requestCount, 0);
+});
+
+test("memory CLI gives the same scope recovery guidance for a Claude turn", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-cli-claude-scope-"));
+  const memoraxCodeHome = join(root, "memorax-code-home");
+  const first = join(root, "first");
+  const second = join(root, "second");
+  await mkdir(first, { recursive: true });
+  await mkdir(second, { recursive: true });
+  await writeCurrentClaudeTurn(traceContextFromClaudeHookBody({
+    session_id: "session-claude-scope",
+    prompt_id: "prompt-claude-scope",
+    cwd: first,
+  }), { memoraxCodeHome });
+  let requestCount = 0;
+
+  const result = await runMemoryCli(["search", "--query", "must not cross workspaces"], {
+    cwd: second,
+    env: {
+      MEMORAX_CODE_MEMORY_CLI_TRACE_CLIENT: "claude",
+      MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID: "session-claude-scope",
+      MEMORAX_CODE_HOME: memoraxCodeHome,
+      MEMORAX_CODE_MEMORAX_ENDPOINT: "http://memorax.test",
+      MEMORAX_CODE_MEMORAX_API_KEY: "secret",
+      MEMORAX_CODE_MEMORAX_USER_ID: "user-1",
+    },
+    fetchImpl: async () => {
+      requestCount += 1;
+      return new Response("{}", { status: 200 });
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /does not match the current Claude turn repository\/workspace scope/);
+  assert.equal(result.workspaceScope, "unavailable");
+  assert.equal(result.workspaceScopeReason, "workspace_scope_mismatch");
+  assert.equal(
+    result.userAction,
+    "Start a new Codex or Claude Code session from the target repository or local workspace.",
+  );
   assert.equal(requestCount, 0);
 });
 
