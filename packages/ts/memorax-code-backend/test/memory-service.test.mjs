@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -151,7 +151,7 @@ test("memory service discards fallback writeback when turn start upgrades the se
       prompt: "Observe the repaired Git metadata.",
       cwd: workspace,
       transcriptPath,
-    }), { ok: true });
+    }), { ok: true, repoMemoryWorktree: await realpath(workspace) });
 
     await service.drain();
     assert.equal(requests.length, 0);
