@@ -246,8 +246,16 @@ function automaticMemoryWritebackDecision(
   const rawAssistantText = options.assistantText?.trim() ?? "";
   if (!rawUserText) return { write: false, skipReason: "user_prompt_empty" };
   if (!rawAssistantText) return { write: false, skipReason: "assistant_text_empty" };
-  const userRedaction = redactMemoryPayloadText(rawUserText);
-  const assistantRedaction = redactMemoryPayloadText(rawAssistantText);
+  const boundedUserText = limitMessageContent(rawUserText, maxMessageChars, {
+    role: "user",
+    sessionKey,
+  }, state.diagnosticLogger);
+  const boundedAssistantText = limitMessageContent(rawAssistantText, maxMessageChars, {
+    role: "assistant",
+    sessionKey,
+  }, state.diagnosticLogger);
+  const userRedaction = redactMemoryPayloadText(boundedUserText);
+  const assistantRedaction = redactMemoryPayloadText(boundedAssistantText);
   logAutomaticMemoryPayloadRedaction(state, sessionKey, "user", rawUserText, userRedaction);
   logAutomaticMemoryPayloadRedaction(state, sessionKey, "assistant", rawAssistantText, assistantRedaction);
   const userText = limitMessageContent(userRedaction.text, maxMessageChars, {
@@ -452,7 +460,10 @@ function limitMessageContent(
   diagnosticLogger: MemoryDiagnosticLogger = () => {},
 ): string {
   if (content.length <= maxChars) return content;
-  const kept = content.slice(0, maxChars).trim();
+  const prefix = content.slice(0, maxChars);
+  const kept = (/\S$/.test(prefix) && /^\S/.test(content.slice(maxChars)))
+    ? prefix.replace(/\S+$/, "").trim()
+    : prefix.trim();
   diagnosticLogger("memory.automatic_writeback.truncated", {
     sessionKeyHash: hashOptionalText(fields?.sessionKey),
     role: fields?.role,
