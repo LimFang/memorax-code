@@ -29,7 +29,6 @@ type RedactionRule = Readonly<{
   accept?: (value: string) => boolean;
 }>;
 
-const MAX_REDACTION_INPUT_CHARS = 1_000_000;
 const PLACEHOLDER_PATTERN = /\[REDACTED:[A-Z_]+\]/g;
 const PLACEHOLDER_VALUE_PATTERN = /^\[REDACTED:[A-Z_]+\]$/;
 const SENSITIVE_KEY_SOURCE = String.raw`(?:[A-Za-z_$][A-Za-z0-9_$-]*)?(?:password|passwd|pwd|client[-_$]?secret|consumer[-_$]?secret|api[-_$]?key|access[-_$]?token|refresh[-_$]?token|auth[-_$]?token|id[-_$]?token|private[-_$]?key|secret[-_$]?access[-_$]?key|secret[-_$]?key|credential|secret|token)`;
@@ -148,9 +147,6 @@ const RULES: readonly RedactionRule[] = [
 ];
 
 export function redactMemoryPayloadText(text: string): MemoryPayloadRedactionResult {
-  if (text.length > MAX_REDACTION_INPUT_CHARS) {
-    throw new Error(`memory payload text exceeds the ${MAX_REDACTION_INPUT_CHARS} character redaction limit`);
-  }
   if (!text) return { text, counts: {}, redacted: false };
 
   const spans: RedactionSpan[] = [];

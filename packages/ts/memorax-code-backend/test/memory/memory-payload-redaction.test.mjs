@@ -117,13 +117,6 @@ test("memory payload redaction resolves overlaps and remains idempotent", () => 
   });
 });
 
-test("memory payload redaction fails closed when input exceeds its bound", () => {
-  assert.throws(
-    () => redactMemoryPayloadText("x".repeat(1_000_001)),
-    /memory payload text exceeds the 1000000 character redaction limit/,
-  );
-});
-
 test("meaningful memory payload text keeps useful context after redaction", () => {
   assert.equal(hasMeaningfulMemoryPayloadText("  \n\t"), false);
   assert.equal(hasMeaningfulMemoryPayloadText("[REDACTED:EMAIL], [REDACTED:API_KEY]"), false);

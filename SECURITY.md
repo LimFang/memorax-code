@@ -67,6 +67,25 @@ matching final assistant response from an exact Codex or Claude Code
 transcript turn. It does not send the retained trace file, raw transcript
 path, or trace-only provenance as part of that payload.
 
+Automatic writeback bounds each selected message to its configured Add limit,
+then applies a local best-effort detector before hashing, buffering, chunking,
+observability, or network dispatch. Recognized private keys, authorization
+tokens, cookies, API keys, structured credentials, email addresses, long
+numbers, UUIDs, fixed-length hexadecimal strings, and high-entropy opaque
+identifiers are replaced with typed placeholders such as
+`[REDACTED:PRIVATE_KEY]`, `[REDACTED:AUTH_TOKEN]`,
+`[REDACTED:COOKIE]`, `[REDACTED:API_KEY]`,
+`[REDACTED:CREDENTIAL]`, `[REDACTED:EMAIL]`,
+`[REDACTED:LONG_NUMBER]`, and `[REDACTED:OPAQUE_ID]`. If either side of the
+turn contains no meaningful content after replacement, that automatic
+writeback is skipped locally and no Add request is sent.
+
+This detector is not a complete data-loss-prevention system. Unknown formats
+and weak-context personal information may remain. Explicit `memorax-cli add`
+content and Search queries are sent as entered and do not use this automatic
+writeback detector; do not intentionally submit credentials or private data
+through those operations.
+
 The packaged default uses `https://platform.memorax.net`. An endpoint override
 is a separate trust decision; configure only a compatible MemoraX service you
 trust.
