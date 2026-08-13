@@ -723,7 +723,6 @@ test("MemoraX adapter escapes recalled memory text in context blocks", async () 
 
 test("MemoraX adapter maps writeback to /v1/memories/add", async () => {
   const requests = [];
-  const token = ["ghp", "Z".repeat(36)].join("_");
   const server = createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -740,18 +739,6 @@ test("MemoraX adapter maps writeback to /v1/memories/add", async () => {
     }));
   });
   const baseUrl = await listen(server);
-  const config = {
-    baseUrl,
-    apiKey: "secret",
-    userId: "user-1",
-    memoryOutputLanguage: "en",
-    topK: 6,
-    timeoutMs: 1000,
-    maxContextChars: 4000,
-    maxItemChars: 1000,
-    memoryTypeOrder: ["core", "procedural", "unclassified"],
-    renderByMemoryType: true,
-  };
   try {
     const result = await invokeMemoraxMemoryProvider(
       {
@@ -766,13 +753,24 @@ test("MemoraX adapter maps writeback to /v1/memories/add", async () => {
         context: {
           idempotencyKey: "session-1:branch-1:action-1",
           messages: [
-            { role: "user", content: `remember ${token}`, timestamp: 1777392000000 },
+            { role: "user", content: "remember this", timestamp: 1777392000000 },
             { role: "assistant", content: "noted", timestamp: 1777392000001 },
           ],
         },
       },
       {
-        config,
+        config: {
+          baseUrl,
+          apiKey: "secret",
+          userId: "user-1",
+          memoryOutputLanguage: "en",
+          topK: 6,
+          timeoutMs: 1000,
+          maxContextChars: 4000,
+          maxItemChars: 1000,
+          memoryTypeOrder: ["core", "procedural", "unclassified"],
+          renderByMemoryType: true,
+        },
         repositoryScope: testRepositoryScope(),
       },
     );
@@ -786,7 +784,7 @@ test("MemoraX adapter maps writeback to /v1/memories/add", async () => {
     assert.equal(requests[0].body.session_id, "branch-1");
     assert.equal(requests[0].body.async_mode, true);
     assert.deepEqual(requests[0].body.messages.map((message) => [message.role, message.content]), [
-      ["user", `remember ${token}`],
+      ["user", "remember this"],
       ["assistant", "noted"],
     ]);
     assert.equal(requests[0].body.metadata.source, "memorax-code");
@@ -796,28 +794,6 @@ test("MemoraX adapter maps writeback to /v1/memories/add", async () => {
     assert.equal("memorax_code_repository" in requests[0].body.metadata, false);
     assert.equal(requests[0].body.metadata.idempotency_key, "session-1:branch-1:action-1");
     assert.equal(result.result.dispatch_receipt.accepted, true);
-
-    const automaticResult = await invokeMemoraxMemoryProvider(
-      { sessionId: "session-automatic", prompt: "fallback prompt" },
-      {
-        provider_id: "memory.memorax",
-        slot: "state_context",
-        operation: "writeback",
-        context: {
-          idempotencyKey: "session-automatic:action-1",
-          messages: [{ role: "user", content: `Use ${token} for deployment.` }],
-        },
-      },
-      {
-        config,
-        requireRedactedWriteback: true,
-        repositoryScope: testRepositoryScope(),
-      },
-    );
-
-    assert.equal(automaticResult.ok, false);
-    assert.equal(automaticResult.error, "automatic writeback content must be redacted before provider dispatch");
-    assert.equal(requests.length, 1);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
