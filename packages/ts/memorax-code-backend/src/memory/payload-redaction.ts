@@ -44,7 +44,7 @@ const RULES: readonly RedactionRule[] = [
     priority: 100,
   },
   {
-    pattern: /(?:^|[\r\n])[ \t]*(?:Proxy-)?Authorization\s*:\s*(?:Bearer|Token|Basic)\s+["']?([A-Za-z0-9._~+/=-]{4,})/gim,
+    pattern: /(?:^|[\r\n])[ \t]*(?:Proxy-)?Authorization\s*:\s*([^\r\n]+)/gim,
     group: 1,
     kind: "AUTH_TOKEN",
     priority: 95,

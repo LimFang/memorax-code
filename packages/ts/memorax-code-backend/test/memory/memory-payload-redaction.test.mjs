@@ -26,7 +26,7 @@ test("memory payload redaction replaces each supported detector category", () =>
   ].join(".");
   const cases = [
     ["private key", `key:\n${privateKey}\nend`, "key:\n[REDACTED:PRIVATE_KEY]\nend", "PRIVATE_KEY"],
-    ["authorization", `Authorization: Bearer ${fake.opaque}`, "Authorization: Bearer [REDACTED:AUTH_TOKEN]", "AUTH_TOKEN"],
+    ["authorization", `Authorization: Digest username="user", response="${fake.opaque}"`, "Authorization: [REDACTED:AUTH_TOKEN]", "AUTH_TOKEN"],
     ["JWT", `jwt=${jwt}`, "jwt=[REDACTED:AUTH_TOKEN]", "AUTH_TOKEN"],
     ["cookie", `Cookie: session=${fake.opaque}`, "Cookie: [REDACTED:COOKIE]", "COOKIE"],
     ["vendor API key", `token ${fake.github}`, "token [REDACTED:API_KEY]", "API_KEY"],
@@ -92,7 +92,7 @@ test("memory payload redaction resolves overlaps and remains idempotent", () => 
   ].join("\n"));
 
   assert.equal(first.text, [
-    "Authorization: Bearer [REDACTED:AUTH_TOKEN]",
+    "Authorization: [REDACTED:AUTH_TOKEN]",
     "Cookie: [REDACTED:COOKIE]",
     "password: [REDACTED:CREDENTIAL]",
   ].join("\n"));
