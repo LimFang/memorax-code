@@ -270,7 +270,7 @@ test("automatic memory writeback never merges clients with the same repository a
   }
 });
 
-test("automatic memory writeback chunks a normalized long turn", async () => {
+test("automatic memory writeback validates a normalized long decimal before chunking", async () => {
   const requests = [];
   const runtime = createAutomaticMemoryWritebackRuntime();
   try {
@@ -278,7 +278,7 @@ test("automatic memory writeback chunks a normalized long turn", async () => {
       client: "codex",
       sessionKey: "session-automatic-chunk",
       userText: "Summarize",
-      assistantText: "abcdefghijklmnopqrstuvwxyz",
+      assistantText: "123456789.6059746146202087",
       repositoryScope: REPOSITORY_SCOPE,
       env: {
         ...WRITEBACK_ENV,
@@ -294,9 +294,9 @@ test("automatic memory writeback chunks a normalized long turn", async () => {
     assert.deepEqual(requests.map((request) => request.body.chunk.index), [0, 1, 2]);
     assert.deepEqual(requests.map((request) => request.body.chunk.count), [3, 3, 3]);
     assert.deepEqual(requests.map((request) => request.body.messages.map((message) => message.content)), [
-      ["Summarize", "abcdefghij"],
-      ["ijklmnopqr"],
-      ["qrstuvwxyz"],
+      ["Summarize", "123456789."],
+      ["9.60597461"],
+      ["6146202087"],
     ]);
   } finally {
     runtime.close();

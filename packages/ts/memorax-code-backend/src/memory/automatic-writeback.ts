@@ -306,6 +306,13 @@ async function enqueueAutomaticMemoryWritebackAsync(
   options: AutomaticMemoryWritebackOptions,
 ): Promise<void> {
   try {
+    if (decision.messages.some((message) => redactMemoryPayloadText(message.content).redacted)) {
+      state.diagnosticLogger("memory.writeback.redaction_rejected", {
+        source: options.memoryObservabilitySource ?? "automatic_writeback",
+        messageCount: decision.messages.length,
+      });
+      throw new Error("automatic writeback content must be redacted before provider dispatch");
+    }
     const parts = memoryWritebackAddParts(decision, options.env ?? process.env);
     for (const [index, part] of parts.entries()) {
       for (let attempt = 1; attempt <= AUTOMATIC_MEMORY_WRITEBACK_MAX_ATTEMPTS; attempt += 1) {
