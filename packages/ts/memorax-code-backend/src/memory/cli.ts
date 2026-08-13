@@ -22,10 +22,6 @@ import {
 } from "../repository/scope.js";
 import { isTraceClient, type TraceClient } from "../trace/context.js";
 import { readCurrentTraceTurn, recordTraceEvent } from "../trace/store.js";
-import {
-  hasMeaningfulMemoryPayloadText,
-  redactMemoryPayloadText,
-} from "./payload-redaction.js";
 
 type MemoryCliOptions = {
   cwd?: string;
@@ -181,29 +177,15 @@ async function memoryAdd(args: string[], options: MemoryCliOptions): Promise<Mem
   }
   const memoryResult = await readTextArg(args, "--memory", "--memory-file", "memory");
   if (!memoryResult.ok) return { ok: false, action: "memory.add", error: memoryResult.error };
-  const rawMemory = memoryResult.text;
+  const memory = memoryResult.text;
   const maxChars = memoryCliMaxMemoryChars(env);
-  if (rawMemory.length > maxChars) {
-    return { ok: false, action: "memory.add", error: `memory is too long: ${rawMemory.length} chars > ${maxChars}` };
+  if (memory.length > maxChars) {
+    return { ok: false, action: "memory.add", error: `memory is too long: ${memory.length} chars > ${maxChars}` };
   }
   const memoryType = requiredArg(args, "--type");
   if (!memoryType.ok) return { ok: false, action: "memory.add", error: memoryType.error };
   const reason = requiredArg(args, "--reason");
   if (!reason.ok) return { ok: false, action: "memory.add", error: reason.error };
-  let memory: string;
-  let redactedReason: string;
-  try {
-    memory = redactMemoryPayloadText(rawMemory).text;
-    redactedReason = redactMemoryPayloadText(reason.value).text;
-  } catch {
-    return { ok: false, action: "memory.add", error: "memory add content redaction failed" };
-  }
-  if (!hasMeaningfulMemoryPayloadText(memory)) {
-    return { ok: false, action: "memory.add", error: "memory contains no meaningful content after redaction" };
-  }
-  if (!hasMeaningfulMemoryPayloadText(redactedReason)) {
-    return { ok: false, action: "memory.add", error: "--reason contains no meaningful content after redaction" };
-  }
   const contentOptions = memoryAddContentOptions(args);
   if (!contentOptions.ok) return { ok: false, action: "memory.add", error: contentOptions.error };
   const repositoryMemory = await resolveMemoryCliRepositoryMemory(options);
@@ -221,13 +203,13 @@ async function memoryAdd(args: string[], options: MemoryCliOptions): Promise<Mem
       operation: "writeback",
       dispatch: "async_best_effort",
       context: {
-        idempotencyKey: `memory-cli:${sessionId}:${hashText(`${memoryType.value}\n${redactedReason}\n${memory}`)}`,
+        idempotencyKey: `memory-cli:${sessionId}:${hashText(`${memoryType.value}\n${reason.value}\n${memory}`)}`,
         messages: [{ role: "user", content: memory }],
         ...contentOptions.context,
         metadata: {
           source_detail: "memorax_code_memory_cli",
           memory_type: memoryType.value,
-          memorax_code_memory_reason: redactedReason,
+          memorax_code_memory_reason: reason.value,
         },
       },
     },
