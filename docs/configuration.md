@@ -160,6 +160,32 @@ selecting another language. The setting affects newly generated content;
 `raw` input and client-supplied `pre_summarized` text are not translated.
 Command arguments override the other add defaults.
 
+### Automatic writeback redaction
+
+Automatic writeback first bounds each user or assistant message with
+`max_message_chars`, discarding an incomplete token at the cutoff, and then
+runs a local best-effort detector before hashing, buffering, chunking, or
+sending the content. The detector replaces these categories with typed
+placeholders:
+
+| Category | Placeholder |
+| --- | --- |
+| Private keys | `[REDACTED:PRIVATE_KEY]` |
+| Authorization tokens and JWTs | `[REDACTED:AUTH_TOKEN]` |
+| Cookie values | `[REDACTED:COOKIE]` |
+| Common API key formats | `[REDACTED:API_KEY]` |
+| Credential assignments, CLI arguments, URL query values, and URL passwords | `[REDACTED:CREDENTIAL]` |
+| Email addresses | `[REDACTED:EMAIL]` |
+| Long numbers, including common spaces, hyphens, and parentheses | `[REDACTED:LONG_NUMBER]` |
+| UUIDs, fixed-length hexadecimal strings, and high-entropy alphanumeric identifiers | `[REDACTED:OPAQUE_ID]` |
+
+If either bounded message has no meaningful content after replacement, the
+automatic writeback is skipped before network dispatch. The detector is
+always active for automatic writeback, but it is not a complete
+data-loss-prevention system and may miss unknown or weak-context sensitive
+formats. Explicit `memorax-cli add` content and Search queries are sent as
+entered and do not pass through this detector.
+
 ## Skill reminder and repository maintenance
 
 `[memory.skill_reminder].interval_turns` defaults to `5`; its environment
