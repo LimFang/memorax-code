@@ -75,6 +75,7 @@ test("memory payload redaction preserves representative non-sensitive coding tex
     "tool --password --verbose",
     "connect(password=swordfish)",
     "Authorization:   \nContent-Type: application/json",
+    "measurement=123456789.6059746146202087",
   ];
 
   for (const value of values) {

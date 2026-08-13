@@ -125,7 +125,7 @@ const RULES: readonly RedactionRule[] = [
     accept: looksLikeHighEntropyOpaqueId,
   },
   {
-    pattern: /(?<![A-Za-z0-9])\+?(?:\d|\(\d)[\d ()-]*\d[Xx]?\)?(?![A-Za-z0-9])/g,
+    pattern: /(?<![A-Za-z0-9.])\+?(?:\d|\(\d)[\d ()-]*\d[Xx]?\)?(?![A-Za-z0-9]|\.\d)/g,
     kind: "LONG_NUMBER",
     priority: 50,
     accept: (value) => {
