@@ -44,6 +44,7 @@ body:
         - Codex
         - Claude Code
         - Both Codex and Claude Code
+        - Not applicable
         - Not sure
     validations:
       required: true
