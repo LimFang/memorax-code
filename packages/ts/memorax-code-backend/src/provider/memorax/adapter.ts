@@ -26,6 +26,7 @@ import {
 } from "../../repository/scope.js";
 import type { TraceContext } from "../../trace/context.js";
 import { isRecord } from "../../shared/record.js";
+import { redactMemoryPayloadText } from "../../memory/payload-redaction.js";
 
 const SLOT_RESULT_SCHEMA_VERSION = "slot-invocation-result.preview.v1";
 const FORWARDED_WRITEBACK_METADATA_KEYS = [
@@ -58,6 +59,7 @@ export type MemoraxAdapterOptions = {
   relatedTurns?: MemoryObservabilityRelatedTurn[];
   repositoryScope?: RepositoryMemoryScope;
   traceContext?: TraceContext;
+  requireRedactedWriteback?: boolean;
   writebackAttempt?: {
     attempt: number;
     maxAttempts: number;
@@ -315,6 +317,16 @@ async function invokeMemoraxWriteback(
   if (messages.length === 0) return { ok: false, error: "writeback messages are required" };
   const idempotencyKey = writebackIdempotencyKeyFromContext(context);
   if (!idempotencyKey) return { ok: false, error: "writeback idempotency key is required" };
+  if (
+    options.requireRedactedWriteback
+    && messages.some((message) => redactMemoryPayloadText(message.content).redacted)
+  ) {
+    options.diagnosticLogger?.("memory.writeback.redaction_rejected", {
+      source: options.observabilitySource ?? "unknown",
+      messageCount: messages.length,
+    });
+    return { ok: false, error: "automatic writeback content must be redacted before provider dispatch" };
+  }
   const addOptions = memoraxAddOptionsFromContext(context, env);
   if (!addOptions.ok) return { ok: false, error: addOptions.error };
   const payload = buildMemoraxAddPayload(config, run, messages, context, idempotencyKey, repositoryScope, addOptions.options);

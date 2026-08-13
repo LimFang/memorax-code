@@ -332,6 +332,7 @@ async function enqueueAutomaticMemoryWritebackAsync(
           observability: options.memoryObservability,
           observabilitySource: options.memoryObservabilitySource ?? "automatic_writeback",
           relatedTurns: options.relatedTurns,
+          requireRedactedWriteback: true,
           repositoryScope: options.repositoryScope,
           traceContext: options.traceContext,
           diagnosticLogger: state.diagnosticLogger,
