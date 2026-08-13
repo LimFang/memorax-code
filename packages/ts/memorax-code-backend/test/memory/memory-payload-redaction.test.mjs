@@ -19,6 +19,11 @@ test("memory payload redaction replaces each supported detector category", () =>
     "cHJpdmF0ZS1rZXktbWF0ZXJpYWw=",
     "-----END PRIVATE KEY-----",
   ].join("\n");
+  const pgpPrivateKey = [
+    "-----BEGIN PGP PRIVATE KEY BLOCK-----",
+    "cHJpdmF0ZS1rZXktbWF0ZXJpYWw=",
+    "-----END PGP PRIVATE KEY BLOCK-----",
+  ].join("\n");
   const jwt = [
     Buffer.from('{"alg":"HS256"}').toString("base64url"),
     Buffer.from('{"sub":"private-user"}').toString("base64url"),
@@ -26,6 +31,7 @@ test("memory payload redaction replaces each supported detector category", () =>
   ].join(".");
   const cases = [
     ["private key", `key:\n${privateKey}\nend`, "key:\n[REDACTED:PRIVATE_KEY]\nend", "PRIVATE_KEY"],
+    ["PGP private key", pgpPrivateKey, "[REDACTED:PRIVATE_KEY]", "PRIVATE_KEY"],
     ["authorization", `Authorization: Digest username="user", response="${fake.opaque}"`, "Authorization: [REDACTED:AUTH_TOKEN]", "AUTH_TOKEN"],
     ["JWT", `jwt=${jwt}`, "jwt=[REDACTED:AUTH_TOKEN]", "AUTH_TOKEN"],
     ["cookie", `Cookie: session=${fake.opaque}`, "Cookie: [REDACTED:COOKIE]", "COOKIE"],

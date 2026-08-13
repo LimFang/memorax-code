@@ -39,7 +39,7 @@ const NON_CONTENT_LABEL_PATTERN = /\b(?:proxy-authorization|authorization|bearer
 
 const RULES: readonly RedactionRule[] = [
   {
-    pattern: /-----BEGIN ((?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/gi,
+    pattern: /-----BEGIN ((?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----[\s\S]*?(?:-----END \1-----|$)/gi,
     kind: "PRIVATE_KEY",
     priority: 100,
   },
