@@ -844,7 +844,7 @@ test("memory CLI add rejects writes when add gate is explicitly disabled", async
   assert.match(result.error, /MEMORAX_CODE_MEMORY_CLI_ADD_ENABLED=true|memory\.cli.*add_enabled/i);
 });
 
-test("memory CLI add writes a short memory through MemoraX", async () => {
+test("memory CLI add redacts a short memory and reason before sending", async () => {
   const requests = [];
   const server = createServer(async (req, res) => {
     const chunks = [];
@@ -865,8 +865,11 @@ test("memory CLI add writes a short memory through MemoraX", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-cli-add-"));
   const workspace = join(root, "memorax-code");
   const memoryFile = join(root, "memory.txt");
+  const token = ["ghp", "R".repeat(36)].join("_");
+  const email = ["private.user", "example.invalid"].join("@");
+  const password = "private-password-value";
   await mkdir(workspace, { recursive: true });
-  await writeFile(memoryFile, "User prefers concise Chinese responses.", "utf8");
+  await writeFile(memoryFile, `Load the deployment credential ${token} through the credential store.`, "utf8");
 
   try {
     const result = await runMemoryCli([
@@ -876,7 +879,7 @@ test("memory CLI add writes a short memory through MemoraX", async () => {
       "--type",
       "preference",
       "--reason",
-      "User stated a stable preference.",
+      `Requested by ${email}; password=${password}`,
       "--session-id",
       "session-manual",
     ], {
@@ -906,7 +909,7 @@ test("memory CLI add writes a short memory through MemoraX", async () => {
       content: message.content,
     })), [{
       role: "user",
-      content: "User prefers concise Chinese responses.",
+      content: "Load the deployment credential [REDACTED:API_KEY] through the credential store.",
     }]);
     assert.equal(requests[0].body.metadata.source, "memorax-code");
     assert.equal(requests[0].body.metadata.source_detail, "memorax_code_memory_cli");
@@ -915,7 +918,14 @@ test("memory CLI add writes a short memory through MemoraX", async () => {
     assert.equal(requests[0].body.metadata.memorax_code_memory_scope, "workspace-name.v1");
     assert.equal("memorax_code_repository" in requests[0].body.metadata, false);
     assert.equal(requests[0].body.metadata.memory_type, "preference");
-    assert.equal(requests[0].body.metadata.memorax_code_memory_reason, "User stated a stable preference.");
+    assert.equal(
+      requests[0].body.metadata.memorax_code_memory_reason,
+      "Requested by [REDACTED:EMAIL]; password=[REDACTED:CREDENTIAL]",
+    );
+    const outbound = JSON.stringify(requests[0].body);
+    assert.equal(outbound.includes(token), false);
+    assert.equal(outbound.includes(email), false);
+    assert.equal(outbound.includes(password), false);
     assert.match(requests[0].body.metadata.idempotency_key, /^memory-cli:session-manual:/);
   } finally {
     await new Promise((resolve) => server.close(resolve));

@@ -22,15 +22,17 @@ const REPOSITORY_SCOPE = {
   boundWorkspaceRoot: "/automatic-memory-tests",
 };
 
-test("automatic memory writeback accepts a normalized completed turn", async () => {
+test("automatic memory writeback accepts and redacts a normalized completed turn", async () => {
   const requests = [];
   const runtime = createAutomaticMemoryWritebackRuntime();
+  const token = ["ghp", "S".repeat(36)].join("_");
+  const password = "private-assistant-password";
   try {
     assert.deepEqual(runtime.enqueue({
       client: "codex",
       sessionKey: "session-automatic-normalized",
-      userText: "Remember the normalized turn input.",
-      assistantText: "The normalized automatic writeback was accepted.",
+      userText: `Remember the deployment token ${token}.`,
+      assistantText: `Use the credential store; password=${password}`,
       repositoryScope: REPOSITORY_SCOPE,
       env: WRITEBACK_ENV,
       fetchImpl: memoraxFetch(requests),
@@ -41,9 +43,11 @@ test("automatic memory writeback accepts a normalized completed turn", async () 
 
     assert.equal(requests[0].url, "http://memorax.test/v1/memories/add");
     assert.deepEqual(requests[0].body.messages.map(({ role, content }) => ({ role, content })), [
-      { role: "user", content: "Remember the normalized turn input." },
-      { role: "assistant", content: "The normalized automatic writeback was accepted." },
+      { role: "user", content: "Remember the deployment token [REDACTED:API_KEY]." },
+      { role: "assistant", content: "Use the credential store; password=[REDACTED:CREDENTIAL]" },
     ]);
+    assert.equal(JSON.stringify(requests[0]).includes(token), false);
+    assert.equal(JSON.stringify(requests[0]).includes(password), false);
     assert.equal(requests[0].body.user_id, "user-1@automatic-memory-tests");
     assert.match(
       requests[0].body.metadata.idempotency_key,

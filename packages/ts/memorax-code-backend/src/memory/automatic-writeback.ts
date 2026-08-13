@@ -30,6 +30,11 @@ import type {
   RepositoryMemoryScopeFailureReason,
 } from "../repository/scope.js";
 import type { TraceContext } from "../trace/context.js";
+import {
+  hasMeaningfulMemoryPayloadText,
+  redactMemoryPayloadText,
+  type MemoryPayloadRedactionKind,
+} from "./payload-redaction.js";
 
 export type AutomaticMemoryWritebackClient = "codex" | "claude-code";
 
@@ -145,7 +150,7 @@ function enqueueAutomaticMemoryWritebackForRuntime(
     state.diagnosticLogger("memory.automatic_writeback", {
       scheduled: false,
       skipReason: "runtime_closed",
-      sessionKey: options.sessionKey,
+      sessionKeyHash: hashOptionalText(options.sessionKey),
     });
     return { accepted: false, reason: "runtime_closed" };
   }
@@ -155,7 +160,7 @@ function enqueueAutomaticMemoryWritebackForRuntime(
       state.diagnosticLogger("memory.automatic_writeback", {
         scheduled: false,
         skipReason: decision.skipReason,
-        sessionKey: options.sessionKey,
+        sessionKeyHash: hashOptionalText(options.sessionKey),
       });
       return decision.skipReason === "duplicate_pending"
         ? { accepted: true }
@@ -163,7 +168,7 @@ function enqueueAutomaticMemoryWritebackForRuntime(
     }
     if (memoryWritebackBufferEnabled(options.env ?? process.env)) {
       state.writebackBuffer.enqueue(decision, options, {
-        debug: state.diagnosticLogger,
+        debug: redactAutomaticMemoryWritebackDiagnosticIdentifiers(state.diagnosticLogger),
         flush: (bufferedDecision, bufferedOptions) => flushAutomaticMemoryWritebackBuffer(
           state,
           bufferedDecision,
@@ -178,8 +183,8 @@ function enqueueAutomaticMemoryWritebackForRuntime(
     reservePendingWriteback(state, decision.idempotencyKey);
     state.diagnosticLogger("memory.automatic_writeback", {
       scheduled: true,
-      sessionKey: options.sessionKey,
-      idempotencyKey: decision.idempotencyKey,
+      sessionKeyHash: hashText(decision.sessionKey),
+      idempotencyKeyHash: hashText(decision.idempotencyKey),
       messageCount: decision.messages.length,
       userChars: decision.messages[0]?.content.length ?? 0,
       assistantChars: decision.messages[1]?.content.length ?? 0,
@@ -193,11 +198,25 @@ function enqueueAutomaticMemoryWritebackForRuntime(
     state.diagnosticLogger("memory.automatic_writeback", {
       scheduled: false,
       skipReason: "decision_error",
-      sessionKey: options.sessionKey,
+      sessionKeyHash: hashOptionalText(options.sessionKey),
       error: error instanceof Error ? error.message : String(error),
     });
     return { accepted: false, reason: "decision_error" };
   }
+}
+
+function redactAutomaticMemoryWritebackDiagnosticIdentifiers(
+  diagnosticLogger: MemoryDiagnosticLogger,
+): MemoryDiagnosticLogger {
+  return (message, fields = {}) => {
+    const { sessionKey, idempotencyKey, parentIdempotencyKey, ...rest } = fields;
+    diagnosticLogger(message, {
+      ...rest,
+      ...(typeof sessionKey === "string" ? { sessionKeyHash: hashText(sessionKey) } : {}),
+      ...(typeof idempotencyKey === "string" ? { idempotencyKeyHash: hashText(idempotencyKey) } : {}),
+      ...(typeof parentIdempotencyKey === "string" ? { parentIdempotencyKeyHash: hashText(parentIdempotencyKey) } : {}),
+    });
+  };
 }
 
 function automaticMemoryWritebackDecision(
@@ -223,16 +242,24 @@ function automaticMemoryWritebackDecision(
 
   const sessionKey = options.sessionKey.trim();
   const maxMessageChars = memoryWritebackMaxMessageChars(env);
-  const userText = limitMessageContent(options.userText?.trim() ?? "", maxMessageChars, {
+  const rawUserText = options.userText?.trim() ?? "";
+  const rawAssistantText = options.assistantText?.trim() ?? "";
+  if (!rawUserText) return { write: false, skipReason: "user_prompt_empty" };
+  if (!rawAssistantText) return { write: false, skipReason: "assistant_text_empty" };
+  const userRedaction = redactMemoryPayloadText(rawUserText);
+  const assistantRedaction = redactMemoryPayloadText(rawAssistantText);
+  logAutomaticMemoryPayloadRedaction(state, sessionKey, "user", rawUserText, userRedaction);
+  logAutomaticMemoryPayloadRedaction(state, sessionKey, "assistant", rawAssistantText, assistantRedaction);
+  const userText = limitMessageContent(userRedaction.text, maxMessageChars, {
     role: "user",
     sessionKey,
   }, state.diagnosticLogger);
-  const assistantText = limitMessageContent(options.assistantText?.trim() ?? "", maxMessageChars, {
+  const assistantText = limitMessageContent(assistantRedaction.text, maxMessageChars, {
     role: "assistant",
     sessionKey,
   }, state.diagnosticLogger);
-  if (!userText) return { write: false, skipReason: "user_prompt_empty" };
-  if (!assistantText) return { write: false, skipReason: "assistant_text_empty" };
+  if (!hasMeaningfulMemoryPayloadText(userText)) return { write: false, skipReason: "user_prompt_empty" };
+  if (!hasMeaningfulMemoryPayloadText(assistantText)) return { write: false, skipReason: "assistant_text_empty" };
 
   const idempotencyKey = `automatic:${options.client}:${hashText(options.repositoryScope.effectiveUserId)}:${sessionKey}:${hashText(userText)}:${hashText(assistantText)}`;
   if (hasPendingWriteback(state, idempotencyKey)) return { write: false, skipReason: "duplicate_pending" };
@@ -246,6 +273,23 @@ function automaticMemoryWritebackDecision(
       { role: "assistant", content: assistantText },
     ],
   };
+}
+
+function logAutomaticMemoryPayloadRedaction(
+  state: AutomaticMemoryWritebackState,
+  sessionKey: string,
+  role: WritebackMessage["role"],
+  originalText: string,
+  result: { text: string; redacted: boolean; counts: Readonly<Partial<Record<MemoryPayloadRedactionKind, number>>> },
+): void {
+  if (!result.redacted) return;
+  state.diagnosticLogger("memory.automatic_writeback.redacted", {
+    sessionKeyHash: hashText(sessionKey),
+    role,
+    originalChars: originalText.length,
+    redactedChars: result.text.length,
+    counts: result.counts,
+  });
 }
 
 async function enqueueAutomaticMemoryWritebackAsync(
@@ -295,9 +339,9 @@ async function enqueueAutomaticMemoryWritebackAsync(
         state.diagnosticLogger("memory.automatic_writeback", {
           scheduled: true,
           accepted: response.ok,
-          sessionKey: decision.sessionKey,
-          idempotencyKey: part.idempotencyKey,
-          parentIdempotencyKey: part.idempotencyKey === decision.idempotencyKey ? undefined : decision.idempotencyKey,
+          sessionKeyHash: hashText(decision.sessionKey),
+          idempotencyKeyHash: hashText(part.idempotencyKey),
+          parentIdempotencyKeyHash: part.idempotencyKey === decision.idempotencyKey ? undefined : hashText(decision.idempotencyKey),
           flushReason: decision.flushReason,
           turnCount: decision.turnCount,
           partIndex: parts.length > 1 ? index : undefined,
@@ -324,8 +368,8 @@ async function enqueueAutomaticMemoryWritebackAsync(
     state.diagnosticLogger("memory.automatic_writeback", {
       scheduled: true,
       accepted: false,
-      sessionKey: decision.sessionKey,
-      idempotencyKey: decision.idempotencyKey,
+      sessionKeyHash: hashText(decision.sessionKey),
+      idempotencyKeyHash: hashText(decision.idempotencyKey),
       flushReason: decision.flushReason,
       turnCount: decision.turnCount,
       error: error instanceof Error ? error.message : String(error),
@@ -410,7 +454,7 @@ function limitMessageContent(
   if (content.length <= maxChars) return content;
   const kept = content.slice(0, maxChars).trim();
   diagnosticLogger("memory.automatic_writeback.truncated", {
-    sessionKey: fields?.sessionKey,
+    sessionKeyHash: hashOptionalText(fields?.sessionKey),
     role: fields?.role,
     originalChars: content.length,
     keptChars: kept.length,
@@ -421,6 +465,10 @@ function limitMessageContent(
 
 function hashText(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
+function hashOptionalText(text: string | undefined): string | undefined {
+  return text?.trim() ? hashText(text.trim()) : undefined;
 }
 
 function automaticMemoryWritebackRetryDelayMs(
