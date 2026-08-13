@@ -68,7 +68,7 @@ const RULES: readonly RedactionRule[] = [
   },
   {
     pattern: new RegExp(
-      String.raw`(?:^|[\r\n;,{}])[ \t]*(?:(?:export|const|let|var)[ \t]+)*["']?${SENSITIVE_KEY_SOURCE}["']?[ \t]*[:=][ \t]*(${CREDENTIAL_VALUE_SOURCE})`,
+      String.raw`(?:^|[\r\n;,{}])[ \t]*(?:-[ \t]+)?(?:(?:export|const|let|var)[ \t]+)*["']?${SENSITIVE_KEY_SOURCE}["']?[ \t]*[:=][ \t]*(${CREDENTIAL_VALUE_SOURCE})`,
       "gim",
     ),
     group: 1,

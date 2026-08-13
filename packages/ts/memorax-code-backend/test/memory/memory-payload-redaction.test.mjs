@@ -32,6 +32,7 @@ test("memory payload redaction replaces each supported detector category", () =>
     ["vendor API key", `token ${fake.github}`, "token [REDACTED:API_KEY]", "API_KEY"],
     ["relay API key", `token sk_${"C".repeat(16)}_${"D".repeat(8)}`, "token [REDACTED:API_KEY]", "API_KEY"],
     ["assignment", `password=${fake.password}`, "password=[REDACTED:CREDENTIAL]", "CREDENTIAL"],
+    ["YAML list assignment", `- api_key: ${fake.password}`, "- api_key: [REDACTED:CREDENTIAL]", "CREDENTIAL"],
     ["CLI option", `tool --api-key ${fake.opaque}`, "tool --api-key [REDACTED:CREDENTIAL]", "CREDENTIAL"],
     ["credential URL", `postgres://user:${fake.password}@host/db`, "postgres://user:[REDACTED:CREDENTIAL]@host/db", "CREDENTIAL"],
     ["email", `contact ${fake.email}`, "contact [REDACTED:EMAIL]", "EMAIL"],
