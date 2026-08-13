@@ -87,6 +87,16 @@ const RULES: readonly RedactionRule[] = [
     accept: (value) => !isSafeCredentialValue(value),
   },
   {
+    pattern: new RegExp(
+      String.raw`[?&]${SENSITIVE_KEY_SOURCE}(?![A-Za-z0-9_$-])=([^&#\s"'<>]+)`,
+      "gi",
+    ),
+    group: 1,
+    kind: "CREDENTIAL",
+    priority: 85,
+    accept: (value) => !isSafeCredentialValue(value),
+  },
+  {
     pattern: /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s/:@]*:([^\s/@]+)@/g,
     group: 1,
     kind: "CREDENTIAL",

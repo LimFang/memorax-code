@@ -40,6 +40,7 @@ test("memory payload redaction replaces each supported detector category", () =>
     ["assignment", `password=${fake.password}`, "password=[REDACTED:CREDENTIAL]", "CREDENTIAL"],
     ["YAML list assignment", `- api_key: ${fake.password}`, "- api_key: [REDACTED:CREDENTIAL]", "CREDENTIAL"],
     ["CLI option", `tool --api-key ${fake.opaque}`, "tool --api-key [REDACTED:CREDENTIAL]", "CREDENTIAL"],
+    ["URL query credential", `https://host/callback?api_key=${fake.password}&mode=x`, "https://host/callback?api_key=[REDACTED:CREDENTIAL]&mode=x", "CREDENTIAL"],
     ["credential URL", `postgres://user:${fake.password}@host/db`, "postgres://user:[REDACTED:CREDENTIAL]@host/db", "CREDENTIAL"],
     ["email", `contact ${fake.email}`, "contact [REDACTED:EMAIL]", "EMAIL"],
     ["long number", `identity ${"1".repeat(32)}`, "identity [REDACTED:LONG_NUMBER]", "LONG_NUMBER"],
