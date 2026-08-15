@@ -6,6 +6,10 @@
   </picture>
 </h1>
 
+<p align="center">
+  <a href="https://trendshift.io/repositories/105791?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-105791" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/105791/daily?language=JavaScript" alt="memorax-ai/memorax-code | Trendshift" width="250" height="55" /></a>
+</p>
+
 <h2 align="center">Never lose context. Never start over.</h2>
 
 <p align="center">
