@@ -363,6 +363,59 @@ layout: "wiki_landing_page.v0.1"
 
 
 
+
+test("repo-memory validator rejects empty commit raw sources unless history is disabled", () => {
+  const root = mkdtempSync(join(tmpdir(), "memorax-code-repo-memory-validate-empty-commit-source."));
+  try {
+    const { memory } = makeMemoryRoot(root);
+    writeFileSync(
+      join(memory, "PROFILE.md"),
+      `---
+schema: "repo_memory_profile.v0.2"
+layout: "wiki_landing_page.v0.1"
+---
+
+# Test Repo Wiki
+`,
+    );
+    writeResource(join(memory, "resources", "commits.md"), {
+      schema: "repo_memory_commit_resource.v0.1",
+      resourceCount: 0,
+      rawSource: "",
+      source: "git_commit_facets",
+      sections: [],
+    });
+    writeResource(join(memory, "resources", "prs.md"), {
+      schema: "repo_memory_pr_resource.v0.1",
+      resourceCount: 0,
+      rawSource: "",
+      source: "history_disabled",
+      trustState: "disabled_by_policy",
+      sections: [],
+    });
+    writeResource(join(memory, "resources", "issues.md"), {
+      schema: "repo_memory_issue_resource.v0.1",
+      resourceCount: 0,
+      rawSource: "",
+      source: "history_disabled",
+      trustState: "disabled_by_policy",
+      sections: [],
+    });
+    writeJson(join(memory, "raw", "git-commits.json"), []);
+
+    const result = spawnSync("python3", [validateScript, memory, "--pretty"], {
+      cwd: packageRoot,
+      encoding: "utf8",
+    });
+
+    assert.notEqual(result.status, 0);
+    const report = JSON.parse(result.stdout);
+    assert.ok(report.errors.some((error) => /resources\/commits\.md.*empty raw_source.*disabled or unavailable source/.test(error)));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("repo-memory validator accepts disabled historical resource files", () => {
   const root = mkdtempSync(join(tmpdir(), "memorax-code-repo-memory-validate-history-disabled."));
   try {

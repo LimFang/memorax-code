@@ -175,7 +175,7 @@ def validate_markdown(path: Path, memory: Path, errors: list[str], warnings: lis
         errors.append(f"{rel}: disabled or unavailable resource source {source!r} must use resource_count 0")
     if source in DISABLED_RESOURCE_SOURCES and raw_source:
         errors.append(f"{rel}: disabled or unavailable resource source {source!r} must use an empty raw_source")
-    if path.name in {"prs.md", "issues.md"} and source not in DISABLED_RESOURCE_SOURCES and raw_source == "":
+    if path.name in {"commits.md", "prs.md", "issues.md"} and source not in DISABLED_RESOURCE_SOURCES and raw_source == "":
         errors.append(f"{rel}: empty raw_source requires a disabled or unavailable source")
     if path.name in {"prs.md", "issues.md"} and raw_source_points_to_provider(raw_source):
         provider_path = (path.parent / raw_source).resolve()

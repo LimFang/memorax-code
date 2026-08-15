@@ -74,6 +74,27 @@ test("repo memory job launcher writes dry-run command with danger-full-access", 
   );
 });
 
+test("repo memory update worker prompt follows updater history policy", () => {
+  const root = tempRoot("repo-memory-job-update-prompt-");
+  const repo = join(root, "repo");
+  const memoraxCodeHome = join(root, "memorax-code");
+  const head = initRepo(repo);
+  writeProfile(repo, head);
+
+  const result = runJob(["start", "--mode", "update", "--repo", repo, "--dry-run"], { MEMORAX_CODE_HOME: memoraxCodeHome });
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.mode, "update");
+  assert.match(payload.prompt, /repo-update operation/);
+  assert.match(payload.prompt, /packaged repo-update detector's effective history policy/);
+  assert.match(payload.prompt, /Do not re-enable commit or provider evidence channels disabled by repoHistory\.mode/);
+  assert.doesNotMatch(payload.prompt, /Detect local commit delta from the stored baseline/);
+  assert.doesNotMatch(payload.prompt, /Also try GitHub\/GitLab PR, MR, and issue evidence/);
+  assert.equal(countJobDirs(memoraxCodeHome), 0);
+});
+
 test("repo memory job launcher resolves Codex from installed plugin metadata", () => {
   const root = tempRoot("repo-memory-job-codex-metadata-");
   const repo = join(root, "repo");
