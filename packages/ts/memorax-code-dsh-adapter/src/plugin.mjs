@@ -11,6 +11,7 @@ export const CONTEXT_SOURCE_PLUGIN = "memorax-code-dsh";
 // persistence and process cleanup after this plugin's accepted writes drain.
 const DEFAULT_WRITEBACK_DRAIN_TIMEOUT_MS = 4_000;
 const MAX_REMINDER_TRACE_TIMEOUT_MS = 1_000;
+const MAX_RESUME_RECONCILIATION_WAIT_MS = 12_000;
 
 /** Register DSH-native retrieval and durable Turn writeback listeners. */
 export function registerMemoraxCodePlugin(ctx, dependencies) {
@@ -61,10 +62,32 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
   const pendingContextMessages = new WeakMap();
   const writebackTails = new WeakMap();
   const retrievalLifetime = new AbortController();
+  const resumeReconciliations = new WeakMap();
   const writebackLifetime = new AbortController();
   const pendingReminderTraces = new Set();
   const pendingWritebacks = new Set();
   let accepting = true;
+
+  ctx.on("agent/session-start", ({ agent, source }) => {
+    const session = agent?.session;
+    if (source !== "resume" || !isMemoryEligibleSession(session) || !accepting) return;
+    if (resumeReconciliations.has(session)) return;
+    const state = recoveredInterruptedTurn(session);
+    if (!state) return;
+    const onFailure = (error) => debugFailure(ctx, debug, "interrupted Turn recovery", error);
+    const pending = enqueueWriteback({
+      ctx,
+      backendClient,
+      session,
+      turn: state.turn,
+      state,
+      signal: writebackLifetime.signal,
+      writebackTails,
+    })
+      .catch(onFailure);
+    resumeReconciliations.set(session, pending);
+    trackPending(pendingWritebacks, pending);
+  });
 
   ctx.on("session/event", (session, event) => {
     if (!isMemoryEligibleSession(session) || !accepting) return;
@@ -135,6 +158,7 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
   ctx.on("session/disposed", (session) => {
     discardPendingContextMessages(pendingContextMessages, session);
     turns.delete(session);
+    resumeReconciliations.delete(session);
   });
 
   ctx.on("agent/pre-step", async ({ agent, turn, step, signal }, next) => {
@@ -159,6 +183,7 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
       step,
       turn,
       turns,
+      resumeReconciliations,
       cwd,
     });
     if (signal?.aborted || !accepting || !runtimeEnabled(assertEnabled, ctx, debug)) {
@@ -274,34 +299,59 @@ function discardPendingContextMessages(pendingMessages, session, turn) {
 async function collectRecallContext(options) {
   if (options.step !== 1) return undefined;
   const state = options.turns.get(options.session)?.get(options.turn);
-  if (!state || state.invalid || state.closed || state.retrievalAttempted) return undefined;
+  if (!state || state.invalid || state.closed) return undefined;
+  if (state.retrievalAttempted) {
+    try {
+      await waitForAbortable(
+        state.retrievalPending,
+        options.signal,
+        "DSH duplicate Turn retrieval wait aborted",
+      );
+    } catch {
+      // The pre-step boundary handles an aborted caller.
+    }
+    return undefined;
+  }
   state.retrievalAttempted = true;
   const prompt = userPrompt(options.decision.messages);
   if (!prompt) return undefined;
 
-  try {
-    const command = createTurnStartCommand({
-      sessionId: options.session.id,
-      turn: options.turn,
-      startSeq: state.startSeq,
-      cwd: options.cwd,
-      prompt,
-    });
-    const response = await options.backendClient.recordTurnStart(command, { signal: options.signal });
-    if (options.signal?.aborted) return undefined;
-    state.turnStartRecorded = true;
-    state.repoMemoryWorktree = nonEmptyString(response?.repoMemoryWorktree);
-    if (state.repoMemoryWorktree && typeof options.scheduleRepoMemoryBuild === "function") {
-      try {
-        options.scheduleRepoMemoryBuild(state.repoMemoryWorktree);
-      } catch (error) {
-        debugFailure(options.ctx, options.debug, "Repo Memory scheduling", error);
+  const pending = (async () => {
+    try {
+      await waitForResumeReconciliation(
+        options.resumeReconciliations.get(options.session),
+        options.signal,
+      );
+      options.signal?.throwIfAborted();
+      const command = createTurnStartCommand({
+        sessionId: options.session.id,
+        turn: options.turn,
+        startSeq: state.startSeq,
+        cwd: options.cwd,
+        prompt,
+      });
+      const response = await options.backendClient.recordTurnStart(command, { signal: options.signal });
+      if (options.signal?.aborted) return undefined;
+      state.turnStartRecorded = true;
+      state.repoMemoryWorktree = nonEmptyString(response?.repoMemoryWorktree);
+      if (state.repoMemoryWorktree && typeof options.scheduleRepoMemoryBuild === "function") {
+        try {
+          options.scheduleRepoMemoryBuild(state.repoMemoryWorktree);
+        } catch (error) {
+          debugFailure(options.ctx, options.debug, "Repo Memory scheduling", error);
+        }
       }
+      return nonEmptyString(response?.additionalContext);
+    } catch (error) {
+      debugFailure(options.ctx, options.debug, "retrieval", error);
+      return undefined;
     }
-    return nonEmptyString(response?.additionalContext);
-  } catch (error) {
-    debugFailure(options.ctx, options.debug, "retrieval", error);
-    return undefined;
+  })();
+  state.retrievalPending = pending;
+  try {
+    return await pending;
+  } finally {
+    if (state.retrievalPending === pending) state.retrievalPending = undefined;
   }
 }
 
@@ -432,6 +482,59 @@ async function captureWriteback(ctx, backendClient, session, turn, state, signal
     events: persisted?.events,
   });
   await backendClient.writebackTurn(command, { signal });
+}
+
+function recoveredInterruptedTurn(session) {
+  const owned = ownedSessionEvents(session);
+  const firstLiveSeq = session?.firstLiveSeq;
+  if (!owned || !nonNegativeSafeInteger(firstLiveSeq)) return undefined;
+  const ownedSeedLength = firstLiveSeq - (session.header.seedLength ?? 0);
+  if (!nonNegativeSafeInteger(ownedSeedLength) || ownedSeedLength > owned.length) return undefined;
+  const events = owned.slice(0, ownedSeedLength);
+  const endIndex = events.findLastIndex((event) => (
+    event?.type === "turn/start" || event?.type === "turn/end"
+  ));
+  const end = events[endIndex];
+  const turn = end?.data?.turn;
+  if (end?.type !== "turn/end"
+    || end.data?.reason?.kind !== "interrupted"
+    || !positiveSafeInteger(turn)
+    || !nonNegativeSafeInteger(end.seq)) return undefined;
+  const start = events.slice(0, endIndex).findLast((event) => (
+    event?.type === "turn/start" || event?.type === "turn/end"
+  ));
+  if (start?.type !== "turn/start"
+    || start.data?.turn !== turn
+    || !nonNegativeSafeInteger(start.seq)
+    || start.seq > end.seq) return undefined;
+  return { turn, startSeq: start.seq, endSeq: end.seq };
+}
+
+async function waitForResumeReconciliation(promise, signal) {
+  if (!promise) return;
+  const timeout = AbortSignal.timeout(MAX_RESUME_RECONCILIATION_WAIT_MS);
+  const boundary = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  await waitForAbortable(promise, boundary, "DSH interrupted Turn recovery wait aborted");
+}
+
+async function waitForAbortable(promise, signal, message) {
+  if (!promise) return;
+  if (!signal) {
+    await promise;
+    return;
+  }
+  signal.throwIfAborted();
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason instanceof Error ? signal.reason : new Error(message));
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+  try {
+    await Promise.race([promise, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
 }
 
 export function isMemoryEligibleSession(session) {
