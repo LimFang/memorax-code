@@ -46,7 +46,8 @@ Please allow time for triage and remediation before public disclosure.
   commands fail open without starting a process.
 - Initial Repo Memory builds use only the Git worktree returned by an
   authenticated Backend turn-start request. Backend or workspace-scope
-  failures skip the build; client Hooks do not fall back to their local `cwd`.
+  failures skip the build; client integrations do not fall back to
+  adapter-local workspace input.
 - Codex and OpenCode read repository-local User Profile and Procedure Memory
   only from the worktree authorized by the current Backend turn-start result.
   Without that authority they keep only the generic Skill reminder and do not

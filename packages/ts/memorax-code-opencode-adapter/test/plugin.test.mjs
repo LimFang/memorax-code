@@ -71,6 +71,62 @@ test("repo-scoped reminder builders require a Backend-authorized worktree", asyn
   ]);
 });
 
+test("chat.message starts missing Repo Memory for the Backend-authorized worktree", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-opencode-auto-build-"));
+  const nodePath = process.execPath;
+  const backendRepo = join(root, "backend-repo");
+  const pluginWorktree = join(root, "plugin-worktree");
+  const memoraxCodeHome = join(root, "memorax-code-home");
+  const openCodeConfigDir = join(root, "opencode-config");
+  const jobLog = join(root, "repo-memory-job.json");
+  let hooks;
+  try {
+    await Promise.all([
+      mkdir(backendRepo, { recursive: true }),
+      mkdir(pluginWorktree, { recursive: true }),
+      mkdir(join(openCodeConfigDir, "hooks"), { recursive: true }),
+    ]);
+    await writeFile(join(openCodeConfigDir, "hooks", "repo-memory-job.mjs"), [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(jobLog)}, JSON.stringify({`,
+      "  args: process.argv.slice(2),",
+      "  cwd: process.cwd(),",
+      "  memoraxCodeHome: process.env.MEMORAX_CODE_HOME,",
+      "  parentSessionId: process.env.MEMORAX_CODE_MEMORY_CLI_SESSION_ID,",
+      "  serverUrl: process.env.MEMORAX_CODE_OPENCODE_SERVER_URL,",
+      "}));",
+      "",
+    ].join("\n"));
+    const plugin = createPluginWithoutReminders({
+      memoraxCodeHome,
+      openCodeConfigDir,
+      nodePath,
+      backendConnection: { url: "http://127.0.0.1:8787" },
+      fetchImpl: responseSequence([], [{ ok: true, repoMemoryWorktree: backendRepo }]),
+    });
+    process.execPath = join(root, "opencode");
+    hooks = await plugin(pluginInput({ directory: pluginWorktree, worktree: pluginWorktree }));
+
+    await hooks["chat.message"](
+      { sessionID: "session-auto-build" },
+      promptOutput("user-auto-build", "Build missing Repo Memory."),
+    );
+
+    await waitForFile(jobLog);
+    assert.deepEqual(JSON.parse(await readFile(jobLog, "utf8")), {
+      args: ["maintain", "--repo", backendRepo],
+      cwd: await realpath(backendRepo),
+      memoraxCodeHome,
+      parentSessionId: "session-auto-build",
+      serverUrl: "http://127.0.0.1:4096/",
+    });
+  } finally {
+    process.execPath = nodePath;
+    await hooks?.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("managed plugin starts the Backend once and bounds prompt waiting", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-opencode-backend-start-"));
   const nodePath = process.execPath;
