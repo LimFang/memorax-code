@@ -6,6 +6,13 @@ const TURN_START_TIMEOUT_MS = 12_000;
 const WRITEBACK_TIMEOUT_MS = 5_000;
 const MAX_PENDING_TURNS = 256;
 
+class BackendHttpResponseError extends Error {
+  constructor(path, status) {
+    super(`Backend ${path} returned HTTP ${status}`);
+    this.status = status;
+  }
+}
+
 export function createMemoraxOpenCodePlugin(options = {}) {
   return async ({ client, project, directory, worktree }) => {
     const workspaceRoot = project?.vcs === "git" ? worktree : directory;
@@ -40,17 +47,27 @@ export function createMemoraxOpenCodePlugin(options = {}) {
         ));
         const assistant = completedAssistantFor(messages, sessionId, turn.userMessageId);
         if (!user || !assistant) continue;
-        const result = await postBackend(options, "/memory/writeback", {
-          version: 1,
-          client: "opencode",
-          sessionId,
-          userMessageId: turn.userMessageId,
-          assistantMessageId: assistant.info.id,
-          messages: [user, assistant],
-          cwd: workspaceRoot,
-          workspaceKind,
-        }, WRITEBACK_TIMEOUT_MS);
-        if (result?.ok === true) pendingTurns.delete(turnKey(turn));
+        let result;
+        try {
+          result = await postBackend(options, "/memory/writeback", {
+            version: 1,
+            client: "opencode",
+            sessionId,
+            userMessageId: turn.userMessageId,
+            assistantMessageId: assistant.info.id,
+            messages: [user, assistant],
+            cwd: workspaceRoot,
+            workspaceKind,
+          }, WRITEBACK_TIMEOUT_MS);
+        } catch (error) {
+          if (!(error instanceof BackendHttpResponseError) || error.status !== 413) throw error;
+          pendingTurns.delete(turnKey(turn));
+          debug(options, "opencode oversized writeback discarded", error);
+          continue;
+        }
+        if (result?.ok === true && result.reason !== "runtime_closed") {
+          pendingTurns.delete(turnKey(turn));
+        }
       }
     }
 
@@ -175,7 +192,7 @@ async function postBackend(options, path, body, timeoutMs) {
   });
   if (!response.ok) {
     await response.arrayBuffer().catch(() => undefined);
-    throw new Error(`Backend ${path} returned HTTP ${response.status}`);
+    throw new BackendHttpResponseError(path, response.status);
   }
   return await response.json();
 }

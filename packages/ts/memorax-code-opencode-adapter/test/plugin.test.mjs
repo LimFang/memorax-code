@@ -249,6 +249,66 @@ test("idle reads authoritative SDK messages and dispose drains the pending write
   });
 });
 
+test("idle discards HTTP 413 without starving a runtime-closed retry", async () => {
+  const requests = [];
+  const names = ["oversized", "retry"];
+  const messages = names.flatMap((name, index) => {
+    const userId = `user-${name}`;
+    return [
+      {
+        info: { id: userId, role: "user", sessionID: "session-retry" },
+        parts: [{ type: "text", text: `Prompt ${name}.` }],
+      },
+      {
+        info: {
+          id: `assistant-${name}`,
+          role: "assistant",
+          sessionID: "session-retry",
+          parentID: userId,
+          time: { completed: index + 1 },
+        },
+        parts: [{ type: "text", text: `Reply ${name}.` }],
+      },
+    ];
+  });
+  const plugin = createMemoraxOpenCodePlugin({
+    backendConnection: { url: "http://127.0.0.1:8787" },
+    fetchImpl: responseSequence(requests, [
+      { ok: true },
+      { ok: true },
+      new Response(null, { status: 413 }),
+      { ok: true, scheduled: false, reason: "runtime_closed" },
+      { ok: true, scheduled: true },
+    ]),
+  });
+  const hooks = await plugin(pluginInput({
+    client: { session: { async messages() { return { data: messages }; } } },
+  }));
+  for (const name of names) {
+    await hooks["chat.message"](
+      { sessionID: "session-retry" },
+      { message: { id: `user-${name}` }, parts: [{ type: "text", text: `Prompt ${name}.` }] },
+    );
+  }
+  const idle = () => hooks.event({
+    event: {
+      type: "session.status",
+      properties: { sessionID: "session-retry", status: { type: "idle" } },
+    },
+  });
+
+  idle();
+  await hooks.dispose();
+  idle();
+  await hooks.dispose();
+
+  assert.deepEqual(
+    requests.filter((request) => request.url.endsWith("/memory/writeback"))
+      .map((request) => request.body.userMessageId),
+    ["user-oversized", "user-retry", "user-retry"],
+  );
+});
+
 function pluginInput(overrides = {}) {
   return {
     client: { session: { async messages() { return { data: [] }; } } },
@@ -263,6 +323,7 @@ function responseSequence(requests, responses) {
   return async (url, options) => {
     requests.push({ url: String(url), options, body: JSON.parse(options.body) });
     const body = responses.shift() ?? { ok: true };
+    if (body instanceof Response) return body;
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "content-type": "application/json" },
