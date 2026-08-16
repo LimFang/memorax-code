@@ -36,7 +36,7 @@ import {
   type MemoryPayloadRedactionKind,
 } from "./payload-redaction.js";
 
-export type AutomaticMemoryWritebackClient = "codex" | "claude-code";
+export type AutomaticMemoryWritebackClient = "codex" | "claude-code" | "opencode";
 
 export type AutomaticMemoryWritebackOptions = {
   client: AutomaticMemoryWritebackClient;
@@ -121,7 +121,6 @@ export function createAutomaticMemoryWritebackRuntime(
       return enqueueAutomaticMemoryWritebackForRuntime(state, options);
     },
     discardForScopeUpgrade(upgrade) {
-      if (upgrade.client === "opencode") return 0;
       return state.writebackBuffer.discardForScopeUpgrade({
         client: upgrade.client,
         sessionKey: upgrade.sessionId,

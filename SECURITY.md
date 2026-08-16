@@ -28,9 +28,9 @@ Please allow time for triage and remediation before public disclosure.
 
 ### Client and local Backend
 
-- Codex and Claude Code own provider credentials, models, native tools, and
-  provider traffic. MemoraX Code does not proxy OpenAI Responses or Anthropic
-  Messages traffic and does not need client provider credentials.
+- Codex, Claude Code, and OpenCode own provider credentials, models, native
+  tools, and provider traffic. MemoraX Code does not proxy model-provider
+  traffic and does not need client provider credentials.
 - The managed Backend binds to loopback by default. External binding requires
   explicit opt-in and a Backend token; deployment operators must provide an
   appropriate authenticated and encrypted network boundary.
@@ -65,9 +65,10 @@ When OpenCode automatic retrieval is enabled, each eligible user prompt is
 used as the search query.
 Active adds and automatic writeback send the selected content needed to create
 memory. Automatic writeback may include selected user instructions and the
-matching final assistant response from an exact Codex or Claude Code
-transcript turn. It does not send the retained trace file, raw transcript
-path, or trace-only provenance as part of that payload.
+matching final assistant response from an exact Codex rollout, Claude Code
+transcript, or OpenCode SDK session-message turn. It does not send the retained
+trace file, raw transcript path, SDK message records, or trace-only provenance
+as part of that payload.
 
 Automatic writeback bounds each selected message to its configured Add limit,
 then applies a local best-effort detector before hashing, buffering, chunking,
