@@ -627,6 +627,82 @@ test("idle discards HTTP 413 without starving a runtime-closed retry", async () 
   );
 });
 
+test("message.updated finalizes only MessageAbortedError and serializes with idle", async () => {
+  const requests = [];
+  let clientCalls = 0;
+  let markIdleStarted;
+  let releaseIdle;
+  const idleStarted = new Promise((resolve) => { markIdleStarted = resolve; });
+  const idleReady = new Promise((resolve) => { releaseIdle = resolve; });
+  const assistantInfo = {
+    id: "assistant-interrupted",
+    role: "assistant",
+    sessionID: "session-interrupted",
+    parentID: "user-interrupted",
+    time: { completed: 123 },
+    error: { name: "MessageAbortedError" },
+  };
+  const interruptedMessages = [
+    {
+      info: { id: "user-interrupted", role: "user", sessionID: "session-interrupted" },
+      parts: [{ type: "text", text: "Stop this Turn." }],
+    },
+    { info: assistantInfo, parts: [] },
+  ];
+  const hooks = await createPluginWithoutReminders({
+    backendConnection: { url: "http://127.0.0.1:8787" },
+    fetchImpl: responseSequence(requests, [
+      { ok: true },
+      { ok: true, scheduled: false, reason: "interrupted" },
+    ]),
+  })(pluginInput({
+    client: {
+      session: {
+        async messages() {
+          clientCalls += 1;
+          if (clientCalls === 1) {
+            markIdleStarted();
+            await idleReady;
+            return { data: [] };
+          }
+          return { data: interruptedMessages };
+        },
+      },
+    },
+  }));
+
+  await hooks["chat.message"](
+    { sessionID: "session-interrupted" },
+    promptOutput("user-interrupted", "Stop this Turn."),
+  );
+  hooks.event(messageUpdatedEvent({
+    ...assistantInfo,
+    id: "assistant-other-error",
+    error: { name: "UnknownError" },
+  }));
+  await delay(0);
+  assert.equal(clientCalls, 0);
+
+  hooks.event(sessionIdleEvent("session-interrupted"));
+  await idleStarted;
+  const abortEvent = messageUpdatedEvent(assistantInfo);
+  hooks.event(abortEvent);
+  await delay(0);
+  assert.equal(clientCalls, 1, "the abort refresh waits for the idle refresh");
+
+  releaseIdle();
+  await hooks.dispose();
+  hooks.event(abortEvent);
+  await hooks.dispose();
+
+  assert.equal(clientCalls, 2);
+  assert.deepEqual(requests.map((request) => new URL(request.url).pathname), [
+    "/memory/turn-start",
+    "/memory/writeback",
+  ]);
+  assert.deepEqual(requests[1].body.messages, interruptedMessages);
+});
+
 function pluginInput(overrides = {}) {
   return {
     client: { session: { async messages() { return { data: [] }; } } },
@@ -636,6 +712,14 @@ function pluginInput(overrides = {}) {
     serverUrl: new URL("http://127.0.0.1:4096"),
     ...overrides,
   };
+}
+
+function messageUpdatedEvent(info) {
+  return { event: { type: "message.updated", properties: { info } } };
+}
+
+function sessionIdleEvent(sessionID) {
+  return { event: { type: "session.status", properties: { sessionID, status: { type: "idle" } } } };
 }
 
 function createPluginWithoutReminders(options) {
