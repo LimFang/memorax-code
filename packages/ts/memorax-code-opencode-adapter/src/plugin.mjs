@@ -9,6 +9,7 @@ import {
   markSupplementalReminderForSession,
   personalMemoryReminderContext,
 } from "../../memorax-code-adapter-common/src/hooks/memory-skill-reminder-hook.mjs";
+import { scheduleMissingRepoMemoryBuild } from "../../memorax-code-adapter-common/src/repo-memory/repo-memory-auto-build.mjs";
 import { buildRepoProcedureMemoryContext } from "../../memorax-code-adapter-common/src/repo-memory/repo-procedure-memory-context.mjs";
 import { buildRepoUserProfilePreferencesContext } from "../../memorax-code-adapter-common/src/repo-memory/repo-user-profile-context.mjs";
 import { OPENCODE_REPO_MEMORY_AGENT } from "./repo-memory-server-runner.mjs";
@@ -188,6 +189,16 @@ export function createMemoraxOpenCodePlugin(options = {}) {
           }, TURN_START_TIMEOUT_MS);
           turnStartAccepted = true;
           if (!pluginEnabled(options)) return;
+          repositoryWorktree = stringValue(result?.repoMemoryWorktree);
+          const repoMemoryEnv = openCodeRepoMemoryEnv(options, openCodeServerUrl, sessionId);
+          if (repoMemoryEnv) {
+            scheduleMissingRepoMemoryBuild(repositoryWorktree, {
+              debugEnv: "MEMORAX_CODE_OPENCODE_PLUGIN_DEBUG",
+              pluginRoot: options.openCodeConfigDir,
+              env: repoMemoryEnv,
+              nodePath: options.nodePath,
+            });
+          }
           const turn = { sessionId, userMessageId };
           pendingTurns.set(turnKey(turn), turn);
           while (pendingTurns.size > MAX_PENDING_TURNS) {
@@ -196,7 +207,6 @@ export function createMemoraxOpenCodePlugin(options = {}) {
             pendingTurns.delete(oldest);
           }
           retrievalContext = stringValue(result?.additionalContext);
-          repositoryWorktree = stringValue(result?.repoMemoryWorktree);
         } catch (error) {
           debug(options, "opencode turn start failed", error);
         }
@@ -367,6 +377,17 @@ function urlString(value) {
   } catch {
     return undefined;
   }
+}
+
+function openCodeRepoMemoryEnv(options, serverUrl, sessionId) {
+  const memoraxCodeHome = stringValue(options.memoraxCodeHome);
+  if (!memoraxCodeHome || !serverUrl) return undefined;
+  return {
+    ...process.env,
+    MEMORAX_CODE_HOME: memoraxCodeHome,
+    MEMORAX_CODE_MEMORY_CLI_SESSION_ID: sessionId,
+    MEMORAX_CODE_OPENCODE_SERVER_URL: serverUrl,
+  };
 }
 
 function positiveInteger(value, fallback) {
