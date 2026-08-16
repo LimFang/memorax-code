@@ -382,6 +382,11 @@ async function memoryCliObservability(
 function memoryCliTraceBinding(
   env: Record<string, string | undefined>,
 ): MemoryCliTraceBinding | undefined {
+  if (env.DSH_SHELL === "1") {
+    const expectedSessionId = env.DSH_SESSION_ID?.trim();
+    return expectedSessionId ? { client: "dsh", expectedSessionId } : undefined;
+  }
+
   const explicitClientRaw = env.MEMORAX_CODE_MEMORY_CLI_TRACE_CLIENT;
   const explicitSessionIdRaw = env.MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID;
   if (explicitClientRaw !== undefined || explicitSessionIdRaw !== undefined) {
