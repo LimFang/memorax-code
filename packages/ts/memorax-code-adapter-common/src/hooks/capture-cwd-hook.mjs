@@ -61,7 +61,7 @@ function memoraxCodeSessionRegistryPath(options) {
 
 function memoraxCodeHome(options) {
   return stringOption(options.memoraxCodeHome)
-    ?? process.env.MEMORAX_CODE_HOME
+    ?? stringOption(process.env.MEMORAX_CODE_HOME)
     ?? (process.env.HOME ? join(process.env.HOME, ".memorax-code") : undefined);
 }
 
