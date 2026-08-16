@@ -10,6 +10,7 @@ import {
 } from "../../memorax-code-adapter-common/src/hooks/memory-skill-reminder-hook.mjs";
 import { buildRepoProcedureMemoryContext } from "../../memorax-code-adapter-common/src/repo-memory/repo-procedure-memory-context.mjs";
 import { buildRepoUserProfilePreferencesContext } from "../../memorax-code-adapter-common/src/repo-memory/repo-user-profile-context.mjs";
+import { OPENCODE_REPO_MEMORY_AGENT } from "./repo-memory-server-runner.mjs";
 
 const DEFAULT_BACKEND_PROMPT_WAIT_TIMEOUT_MS = 5_000;
 const TURN_START_TIMEOUT_MS = 12_000;
@@ -26,9 +27,10 @@ class BackendHttpResponseError extends Error {
 }
 
 export function createMemoraxOpenCodePlugin(options = {}) {
-  return async ({ client, project, directory, worktree }) => {
+  return async ({ client, project, directory, worktree, serverUrl }) => {
     const workspaceRoot = project?.vcs === "git" ? worktree : directory;
     const workspaceKind = project?.vcs === "git" ? "project" : "local";
+    const openCodeServerUrl = urlString(serverUrl);
     const pendingTurns = new Map();
     const inFlight = new Set();
     const genericReminderOptions = memorySkillReminderOptions(options);
@@ -123,8 +125,20 @@ export function createMemoraxOpenCodePlugin(options = {}) {
     void ensureBackendReady();
 
     return {
+      config: async (config) => {
+        if (!pluginEnabled(options)) return;
+        config.agent ??= {};
+        const configuredAgent = config.agent[OPENCODE_REPO_MEMORY_AGENT];
+        config.agent[OPENCODE_REPO_MEMORY_AGENT] = {
+          description: "Managed MemoraX Code Repo Memory maintenance agent.",
+          mode: "subagent",
+          hidden: true,
+          ...(configuredAgent && typeof configuredAgent === "object" ? configuredAgent : {}),
+        };
+      },
       "chat.message": async (input, output) => {
         if (!pluginEnabled(options)) return;
+        if (stringValue(input?.agent) === OPENCODE_REPO_MEMORY_AGENT) return;
         const userMessageId = stringValue(output?.message?.id) ?? stringValue(input?.messageID);
         const sessionId = stringValue(input?.sessionID);
         if (Array.isArray(output?.parts) && output.parts.some((part) => part?.type === "compaction")) return;
@@ -203,6 +217,9 @@ export function createMemoraxOpenCodePlugin(options = {}) {
       "shell.env": async (input, output) => {
         if (!pluginEnabled(options)) return;
         output.env.MEMORAX_CODE_MEMORY_CLI_TRACE_CLIENT = "opencode";
+        if (openCodeServerUrl) {
+          output.env.MEMORAX_CODE_OPENCODE_SERVER_URL = openCodeServerUrl;
+        }
         const sessionId = stringValue(input?.sessionID);
         delete output.env.MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID;
         delete output.env.MEMORAX_CODE_MEMORY_CLI_SESSION_ID;
@@ -334,6 +351,18 @@ function debug(options, message, error) {
 
 function stringValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function urlString(value) {
+  try {
+    return value instanceof URL
+      ? value.href
+      : stringValue(value)
+        ? new URL(value).href
+        : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function positiveInteger(value, fallback) {

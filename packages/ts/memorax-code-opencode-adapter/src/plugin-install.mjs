@@ -24,6 +24,7 @@ import {
   defaultMemoraxCodeHome,
   defaultOpenCodeConfigDir,
   openCodePluginPath,
+  openCodeRepoMemoryHelperPath,
   openCodeSkillPath,
 } from "./adapter-paths.mjs";
 
@@ -43,22 +44,35 @@ export function ensureOpenCodePluginInstalled(options = {}) {
   const pluginIsManaged = previousState?.pluginPath === paths.pluginPath
     && (!pluginExists || isManagedLoader(paths.pluginPath));
   const skillIsManaged = previousState?.skillPath === paths.skillPath;
+  const repoMemoryHelperExists = existsSync(paths.repoMemoryHelperPath);
+  const repoMemoryHelperIsManaged = previousState?.repoMemoryHelperPath
+    === paths.repoMemoryHelperPath
+    && (!repoMemoryHelperExists || isManagedLoader(paths.repoMemoryHelperPath));
   if (pluginExists && !pluginIsManaged) {
     return conflict("plugin_conflict", paths, paths.pluginPath);
   }
   if (existsSync(paths.skillPath) && !skillIsManaged) {
     return conflict("skill_conflict", paths, paths.skillPath);
   }
+  if (repoMemoryHelperExists && !repoMemoryHelperIsManaged) {
+    return conflict("repo_memory_helper_conflict", paths, paths.repoMemoryHelperPath);
+  }
 
   const backendUrl = normalizeBackendUrl(
     options.backendUrl ?? previousState?.backendUrl ?? BACKEND_DEFAULT,
   );
   const pluginSourceSha256 = fileSha256(paths.pluginSourcePath);
+  const repoMemoryHelperSourceSha256 = fileSha256(paths.repoMemoryHelperSourcePath);
   const loader = createManagedLoader(paths, pluginSourceSha256);
-  const artifactsCurrent = pluginIsManaged
-    && skillIsManaged
-    && fileContentsEqual(paths.pluginPath, loader)
-    && directoriesEqual(paths.skillSourcePath, paths.skillPath);
+  const repoMemoryHelperLoader = createManagedRepoMemoryHelperLoader(
+    paths,
+    repoMemoryHelperSourceSha256,
+  );
+  const pluginCurrent = pluginIsManaged && fileContentsEqual(paths.pluginPath, loader);
+  const skillCurrent = skillIsManaged && directoriesEqual(paths.skillSourcePath, paths.skillPath);
+  const repoMemoryHelperCurrent = repoMemoryHelperIsManaged
+    && fileContentsEqual(paths.repoMemoryHelperPath, repoMemoryHelperLoader);
+  const artifactsCurrent = pluginCurrent && skillCurrent && repoMemoryHelperCurrent;
   const current = artifactsCurrent
     && previousState?.enabled === true
     && normalizeOptionalBackendUrl(previousState.backendUrl) === backendUrl;
@@ -76,21 +90,27 @@ export function ensureOpenCodePluginInstalled(options = {}) {
     pluginSourceSha256,
     skillPath: paths.skillPath,
     skillSourcePath: paths.skillSourcePath,
+    repoMemoryHelperPath: paths.repoMemoryHelperPath,
+    repoMemoryHelperSourcePath: paths.repoMemoryHelperSourcePath,
+    repoMemoryHelperSourceSha256,
     ...(paths.cliBinDir ? { cliBinDir: paths.cliBinDir } : {}),
     installedAt: stringOption(previousState?.installedAt) ?? now,
     updatedAt: now,
   };
   const pluginExisted = existsSync(paths.pluginPath);
   const skillExisted = existsSync(paths.skillPath);
+  const repoMemoryHelperExisted = existsSync(paths.repoMemoryHelperPath);
   try {
-    if (!artifactsCurrent) {
-      materializeSkill(paths.skillSourcePath, paths.skillPath);
-      atomicWriteText(paths.pluginPath, loader);
+    if (!skillCurrent) materializeSkill(paths.skillSourcePath, paths.skillPath);
+    if (!pluginCurrent) atomicWriteText(paths.pluginPath, loader);
+    if (!repoMemoryHelperCurrent) {
+      atomicWriteText(paths.repoMemoryHelperPath, repoMemoryHelperLoader);
     }
     atomicWriteJson(paths.statePath, state);
   } catch (error) {
     removeNewArtifact(paths.pluginPath, pluginExisted);
     removeNewArtifact(paths.skillPath, skillExisted, true);
+    removeNewArtifact(paths.repoMemoryHelperPath, repoMemoryHelperExisted);
     throw error;
   }
   removePreviousInstallation(previousState, paths);
@@ -107,10 +127,11 @@ export function ensureOpenCodePluginInstalled(options = {}) {
     backendUrlMatches: true,
     opencodeSkills: skillSummary(paths.skillPath, true),
     changed: !current,
-    restartRequired: !artifactsCurrent,
+    restartRequired: !pluginCurrent || !skillCurrent || previousState?.enabled !== true,
     statePath: paths.statePath,
     pluginPath: paths.pluginPath,
     skillPath: paths.skillPath,
+    repoMemoryHelperPath: paths.repoMemoryHelperPath,
     state,
   };
 }
@@ -135,6 +156,7 @@ export function readOpenCodePluginStatus(options = {}) {
       statePath: paths.statePath,
       pluginPath: paths.pluginPath,
       skillPath: paths.skillPath,
+      repoMemoryHelperPath: paths.repoMemoryHelperPath,
       skipped: true,
       reason: "not_managed",
     };
@@ -145,9 +167,14 @@ export function readOpenCodePluginStatus(options = {}) {
     openCodeConfigDir: state.openCodeConfigDir,
     pluginSourcePath: options.pluginSourcePath ?? state.pluginSourcePath,
     skillSourcePath: options.skillSourcePath ?? state.skillSourcePath,
+    repoMemoryHelperSourcePath: options.repoMemoryHelperSourcePath
+      ?? state.repoMemoryHelperSourcePath,
     cliBinDir: options.cliBinDir ?? state.cliBinDir,
   });
-  if (state.pluginPath !== configuredPaths.pluginPath || state.skillPath !== configuredPaths.skillPath) {
+  if (state.pluginPath !== configuredPaths.pluginPath
+    || state.skillPath !== configuredPaths.skillPath
+    || (state.repoMemoryHelperPath
+      && state.repoMemoryHelperPath !== configuredPaths.repoMemoryHelperPath)) {
     return {
       ok: false,
       action: "opencode-plugin-status",
@@ -161,16 +188,32 @@ export function readOpenCodePluginStatus(options = {}) {
 
   const pluginExists = existsSync(configuredPaths.pluginPath);
   const skillExists = existsSync(join(configuredPaths.skillPath, "SKILL.md"));
+  const repoMemoryHelperExists = existsSync(configuredPaths.repoMemoryHelperPath);
+  const repoMemoryHelperRecorded = state.repoMemoryHelperPath
+    === configuredPaths.repoMemoryHelperPath;
   const sourcesReady = !validateSources(configuredPaths);
   const pluginSourceSha256 = sourcesReady ? fileSha256(configuredPaths.pluginSourcePath) : undefined;
+  const repoMemoryHelperSourceSha256 = sourcesReady
+    ? fileSha256(configuredPaths.repoMemoryHelperSourcePath)
+    : undefined;
   const pluginCurrent = sourcesReady && fileContentsEqual(
     configuredPaths.pluginPath,
     createManagedLoader(configuredPaths, pluginSourceSha256),
   );
   const skillCurrent = sourcesReady
     && directoriesEqual(configuredPaths.skillSourcePath, configuredPaths.skillPath);
-  const installed = pluginExists && skillExists;
-  const enabled = state.enabled === true && installed && pluginCurrent && skillCurrent;
+  const repoMemoryHelperCurrent = repoMemoryHelperRecorded
+    && sourcesReady
+    && fileContentsEqual(
+      configuredPaths.repoMemoryHelperPath,
+      createManagedRepoMemoryHelperLoader(configuredPaths, repoMemoryHelperSourceSha256),
+    );
+  const installed = pluginExists && skillExists && repoMemoryHelperExists;
+  const enabled = state.enabled === true
+    && installed
+    && pluginCurrent
+    && skillCurrent
+    && repoMemoryHelperCurrent;
   const configuredBackendUrl = normalizeOptionalBackendUrl(state.backendUrl);
   const expectedBackendUrl = normalizeOptionalBackendUrl(options.backendUrl);
   const backendUrlMatches = !expectedBackendUrl || configuredBackendUrl === expectedBackendUrl;
@@ -181,11 +224,13 @@ export function readOpenCodePluginStatus(options = {}) {
     enabled,
     managed: true,
     integration: "plugin",
-    current: pluginCurrent && skillCurrent,
+    current: pluginCurrent && skillCurrent && repoMemoryHelperCurrent,
     pluginExists,
     pluginCurrent,
     skillExists,
     skillCurrent,
+    repoMemoryHelperExists,
+    repoMemoryHelperCurrent,
     configuredBackendUrl,
     expectedBackendUrl,
     backendUrlMatches,
@@ -193,11 +238,21 @@ export function readOpenCodePluginStatus(options = {}) {
     statePath: paths.statePath,
     pluginPath: configuredPaths.pluginPath,
     skillPath: configuredPaths.skillPath,
+    repoMemoryHelperPath: configuredPaths.repoMemoryHelperPath,
     state,
     ...(!backendUrlMatches
       ? { reason: "backend_url_mismatch" }
       : !enabled
-        ? { reason: statusReason({ sourcesReady, pluginExists, pluginCurrent, skillExists, skillCurrent }) }
+        ? { reason: statusReason({
+          sourcesReady,
+          pluginExists,
+          pluginCurrent,
+          skillExists,
+          skillCurrent,
+          repoMemoryHelperExists,
+          repoMemoryHelperRecorded,
+          repoMemoryHelperCurrent,
+        }) }
         : {}),
   };
 }
@@ -227,10 +282,13 @@ export function disableOpenCodePlugin(options = {}) {
     disabledAt: new Date().toISOString(),
   };
   atomicWriteJson(paths.statePath, nextState);
+  const repoMemoryHelperPath = stringOption(state.repoMemoryHelperPath);
   return {
     ok: true,
     action: "opencode-plugin-disable",
-    installed: existsSync(state.pluginPath) && existsSync(join(state.skillPath, "SKILL.md")),
+    installed: existsSync(state.pluginPath)
+      && existsSync(join(state.skillPath, "SKILL.md"))
+      && Boolean(repoMemoryHelperPath && existsSync(repoMemoryHelperPath)),
     enabled: false,
     managed: true,
     integration: "plugin",
@@ -258,7 +316,12 @@ export function removeOpenCodePluginInstallation(options = {}) {
   const openCodeConfigDir = resolve(state.openCodeConfigDir);
   const pluginPath = openCodePluginPath(openCodeConfigDir);
   const skillPath = openCodeSkillPath(openCodeConfigDir);
-  if (state.pluginPath !== pluginPath || state.skillPath !== skillPath) {
+  const repoMemoryHelperPath = openCodeRepoMemoryHelperPath(openCodeConfigDir);
+  const recordedRepoMemoryHelperPath = stringOption(state.repoMemoryHelperPath);
+  if (state.pluginPath !== pluginPath
+    || state.skillPath !== skillPath
+    || (recordedRepoMemoryHelperPath
+      && recordedRepoMemoryHelperPath !== repoMemoryHelperPath)) {
     return {
       ok: false,
       action: "opencode-plugin-remove",
@@ -275,9 +338,21 @@ export function removeOpenCodePluginInstallation(options = {}) {
       pluginPath,
     };
   }
+  if (recordedRepoMemoryHelperPath
+    && existsSync(repoMemoryHelperPath)
+    && !isManagedLoader(repoMemoryHelperPath)) {
+    return {
+      ok: false,
+      action: "opencode-plugin-remove",
+      reason: "repo_memory_helper_not_managed",
+      statePath: paths.statePath,
+      repoMemoryHelperPath,
+    };
+  }
 
   rmSync(pluginPath, { force: true });
   rmSync(skillPath, { recursive: true, force: true });
+  if (recordedRepoMemoryHelperPath) rmSync(repoMemoryHelperPath, { force: true });
   rmSync(paths.statePath, { force: true });
   return {
     ok: true,
@@ -289,6 +364,7 @@ export function removeOpenCodePluginInstallation(options = {}) {
     statePath: paths.statePath,
     pluginPath,
     skillPath,
+    repoMemoryHelperPath,
   };
 }
 
@@ -301,6 +377,10 @@ export function defaultOpenCodeSkillSourcePath() {
   return existsSync(join(packagedSkill, "SKILL.md"))
     ? packagedSkill
     : resolve(ADAPTER_ROOT, "..", "memorax-code-codex-adapter", "skills", "memorax-code");
+}
+
+export function defaultOpenCodeRepoMemoryHelperSourcePath() {
+  return join(ADAPTER_ROOT, "hooks", "repo-memory-job.mjs");
 }
 
 export function defaultOpenCodeCliBinDir(adapterRoot = ADAPTER_ROOT) {
@@ -331,8 +411,12 @@ function resolvePaths(options) {
     statePath: resolve(options.statePath ?? adapterStatePath(memoraxCodeHome)),
     pluginPath: openCodePluginPath(openCodeConfigDir),
     skillPath: openCodeSkillPath(openCodeConfigDir),
+    repoMemoryHelperPath: openCodeRepoMemoryHelperPath(openCodeConfigDir),
     pluginSourcePath: resolve(options.pluginSourcePath ?? defaultOpenCodePluginSourcePath()),
     skillSourcePath: resolve(options.skillSourcePath ?? defaultOpenCodeSkillSourcePath()),
+    repoMemoryHelperSourcePath: resolve(
+      options.repoMemoryHelperSourcePath ?? defaultOpenCodeRepoMemoryHelperSourcePath(),
+    ),
     cliBinDir: stringOption(options.cliBinDir)
       ? resolve(options.cliBinDir)
       : defaultOpenCodeCliBinDir(),
@@ -362,17 +446,32 @@ function validateState(state, statePath) {
     const openCodeConfigDir = stringOption(state.openCodeConfigDir);
     const pluginPath = stringOption(state.pluginPath);
     const skillPath = stringOption(state.skillPath);
+    const repoMemoryHelperPath = stringOption(state.repoMemoryHelperPath);
+    const repoMemoryHelperSourcePath = stringOption(state.repoMemoryHelperSourcePath);
+    const repoMemoryHelperSourceSha256 = stringOption(state.repoMemoryHelperSourceSha256);
+    const hasRepoMemoryHelperState = [
+      "repoMemoryHelperPath",
+      "repoMemoryHelperSourcePath",
+      "repoMemoryHelperSourceSha256",
+    ].some((field) => Object.hasOwn(state, field));
     if (state.runtime !== "opencode"
       || state.integration !== "plugin"
       || !openCodeConfigDir
       || !pluginPath
-      || !skillPath) {
+      || !skillPath
+      || (hasRepoMemoryHelperState && (
+        !repoMemoryHelperPath
+        || !repoMemoryHelperSourcePath
+        || !/^[a-f0-9]{64}$/.test(repoMemoryHelperSourceSha256 ?? "")
+      ))) {
       return { ok: false, reason: "state_invalid", statePath };
     }
     const resolvedConfigDir = resolve(openCodeConfigDir);
     if (openCodeConfigDir !== resolvedConfigDir
       || pluginPath !== openCodePluginPath(resolvedConfigDir)
-      || skillPath !== openCodeSkillPath(resolvedConfigDir)) {
+      || skillPath !== openCodeSkillPath(resolvedConfigDir)
+      || (repoMemoryHelperPath
+        && repoMemoryHelperPath !== openCodeRepoMemoryHelperPath(resolvedConfigDir))) {
       return { ok: false, reason: "state_paths_invalid", statePath };
     }
   }
@@ -386,6 +485,13 @@ function validateSources(paths) {
   if (!existsSync(join(paths.skillSourcePath, "SKILL.md"))) {
     return { ok: false, reason: "skill_source_missing", sourcePath: paths.skillSourcePath };
   }
+  if (!existsSync(paths.repoMemoryHelperSourcePath)) {
+    return {
+      ok: false,
+      reason: "repo_memory_helper_source_missing",
+      sourcePath: paths.repoMemoryHelperSourcePath,
+    };
+  }
   return undefined;
 }
 
@@ -398,6 +504,7 @@ function conflict(reason, paths, conflictPath) {
     statePath: paths.statePath,
     pluginPath: paths.pluginPath,
     skillPath: paths.skillPath,
+    repoMemoryHelperPath: paths.repoMemoryHelperPath,
   };
 }
 
@@ -421,6 +528,16 @@ function createManagedLoader(paths, pluginSourceSha256) {
   ].join("\n");
 }
 
+function createManagedRepoMemoryHelperLoader(paths, sourceSha256) {
+  const helperUrl = pathToFileURL(paths.repoMemoryHelperSourcePath).href;
+  return [
+    MANAGED_LOADER_HEADER,
+    `// Repo Memory helper source SHA-256: ${sourceSha256}`,
+    `import ${JSON.stringify(helperUrl)};`,
+    "",
+  ].join("\n");
+}
+
 function materializeSkill(sourcePath, targetPath) {
   mkdirSync(dirname(targetPath), { recursive: true });
   const stagePath = `${targetPath}.tmp-${process.pid}-${randomUUID()}`;
@@ -440,6 +557,10 @@ function removePreviousInstallation(previousState, paths) {
   }
   if (previousState.skillPath !== paths.skillPath) {
     rmSync(previousState.skillPath, { recursive: true, force: true });
+  }
+  if (previousState.repoMemoryHelperPath !== paths.repoMemoryHelperPath
+    && isManagedLoader(previousState.repoMemoryHelperPath)) {
+    rmSync(previousState.repoMemoryHelperPath, { force: true });
   }
 }
 
@@ -513,12 +634,24 @@ function collectDirectoryEntries(root) {
   }
 }
 
-function statusReason({ sourcesReady, pluginExists, pluginCurrent, skillExists, skillCurrent }) {
+function statusReason({
+  sourcesReady,
+  pluginExists,
+  pluginCurrent,
+  skillExists,
+  skillCurrent,
+  repoMemoryHelperExists,
+  repoMemoryHelperRecorded,
+  repoMemoryHelperCurrent,
+}) {
   if (!sourcesReady) return "source_missing";
   if (!pluginExists) return "plugin_missing";
   if (!pluginCurrent) return "plugin_stale";
   if (!skillExists) return "skill_missing";
   if (!skillCurrent) return "skill_stale";
+  if (!repoMemoryHelperExists) return "repo_memory_helper_missing";
+  if (!repoMemoryHelperRecorded) return "repo_memory_helper_unmanaged";
+  if (!repoMemoryHelperCurrent) return "repo_memory_helper_stale";
   return "not_enabled";
 }
 
