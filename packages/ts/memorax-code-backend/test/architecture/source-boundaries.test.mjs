@@ -41,6 +41,7 @@ const rules = [
       "clients/claude/transcript-turn.ts",
       "clients/codex/memory-hook-runtime.ts",
       "clients/opencode/memory-hook-runtime.ts",
+      "clients/opencode/message-turn.ts",
       "memory/turn-coordinator.ts",
       "memory/service.ts",
       "memory/writeback-buffer.ts",
@@ -79,7 +80,12 @@ const rules = [
   },
   {
     name: "Hook memory runtimes use normalized automatic writeback",
-    importers: ["clients/claude/memory-hook-runtime.ts", "clients/codex/memory-hook-runtime.ts", "memory/turn-coordinator.ts"],
+    importers: [
+      "clients/claude/memory-hook-runtime.ts",
+      "clients/codex/memory-hook-runtime.ts",
+      "clients/opencode/memory-hook-runtime.ts",
+      "memory/turn-coordinator.ts",
+    ],
     forbidden: ["memory/writeback"],
   },
   {
@@ -94,13 +100,13 @@ const rules = [
   },
   {
     name: "OpenCode memory hook runtime stays independent from HTTP and Backend composition",
-    importers: ["clients/opencode/memory-hook-runtime.ts"],
+    importers: ["clients/opencode/memory-hook-runtime.ts", "clients/opencode/message-turn.ts"],
     forbidden: ["node:http", "server-", "entrypoints/", "transport/http/", "app/state"],
   },
   {
     name: "memory turn coordinator stays independent from HTTP, Backend composition, and client transcripts",
     importers: ["memory/turn-coordinator.ts"],
-    forbidden: ["node:http", "server-", "entrypoints/", "transport/http/", "app/state", "clients/codex/rollout", "clients/claude/"],
+    forbidden: ["node:http", "server-", "entrypoints/", "transport/http/", "app/state", "clients/codex/rollout", "clients/claude/", "clients/opencode/"],
   },
   {
     name: "writeback reconciliation stays independent from HTTP, Backend composition, and Viewer models",

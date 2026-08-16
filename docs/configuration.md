@@ -141,20 +141,20 @@ Automatic prompt retrieval is disabled by default.
 | `memory_type_order` | `MEMORAX_CODE_MEMORAX_MEMORY_TYPE_ORDER` | `core,episodic,semantic,procedural,unclassified` |
 
 The TOML form of `memory_type_order` is an array of strings; the environment
-form is comma-separated. `enabled` controls automatic `UserPromptSubmit`
-retrieval only. Explicit `memorax-cli search` remains available when
+form is comma-separated. `enabled` controls automatic prompt retrieval only.
+Explicit `memorax-cli search` remains available when
 credentials and a trusted workspace scope resolve.
 
 ## Writeback and explicit add
 
-New configurations explicitly set automatic transcript writeback to enabled.
+New configurations explicitly set automatic completed-turn writeback to enabled.
 An existing configuration without `enabled` remains disabled.
 
 | Field | Environment override | Fallback |
 | --- | --- | --- |
 | `enabled` | `MEMORAX_CODE_MEMORY_WRITEBACK_ENABLED` | `false` when absent |
 | `buffer_enabled` | `MEMORAX_CODE_MEMORY_WRITEBACK_BUFFER_ENABLED` | `true` |
-| `buffer_max_turns` | `MEMORAX_CODE_MEMORY_WRITEBACK_BUFFER_MAX_TURNS` | `8`; `-1` disables automatic Hook writeback |
+| `buffer_max_turns` | `MEMORAX_CODE_MEMORY_WRITEBACK_BUFFER_MAX_TURNS` | `8`; `-1` disables automatic writeback |
 | `buffer_max_age_ms` | `MEMORAX_CODE_MEMORY_WRITEBACK_BUFFER_MAX_AGE_MS` | `600000` |
 | `buffer_max_chars` | `MEMORAX_CODE_MEMORY_WRITEBACK_BUFFER_MAX_CHARS` | `128000` |
 | `max_message_chars` | `MEMORAX_CODE_MEMORY_WRITEBACK_MAX_MESSAGE_CHARS` | `64000` |
@@ -232,7 +232,7 @@ local `cwd`.
 
 OpenCode supports active Repo Memory operations through the installed skill,
 but its plugin does not currently run background Repo Memory maintenance. Its
-automatic integration currently covers retrieval.
+automatic integration covers retrieval and completed-turn writeback.
 
 ## Local traces
 
