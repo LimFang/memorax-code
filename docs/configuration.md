@@ -251,13 +251,12 @@ entered and do not pass through this detector.
 
 `[memory.skill_reminder].interval_turns` defaults to `5`; its environment
 override is `MEMORAX_CODE_MEMORY_SKILL_REMINDER_INTERVAL_TURNS`. A positive
-value controls the reminder cadence for Codex, Claude Code, and OpenCode,
-beginning with the first eligible prompt. In DSH, the same interval controls
-trusted repo-scoped Procedure Memory application, beginning with the first
-eligible Turn. DSH also applies trusted repo-scoped User Profile preferences
-when it first observes an eligible session and restores them after successful
-context compaction. These local contexts remain separate from automatic
-writeback content.
+value controls the native skill reminder cadence for supported client
+sessions, beginning with the first eligible prompt or Turn. The same interval
+controls trusted repo-scoped Procedure Memory. User Profile preferences are
+applied on first observation and restored with a personal-memory reminder
+after successful context compaction. These local contexts remain separate
+from automatic writeback content.
 
 | Field | Environment override | Fallback |
 | --- | --- | --- |

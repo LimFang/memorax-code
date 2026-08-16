@@ -1,4 +1,5 @@
 import {
+  createSkillReminderCommand,
   createTurnStartCommand,
   createWritebackCommand,
 } from "./protocol.mjs";
@@ -9,6 +10,7 @@ export const CONTEXT_SOURCE_PLUGIN = "memorax-code-dsh";
 // DSH gives the whole app five seconds to dispose; leave time for downstream
 // persistence and process cleanup after this plugin's accepted writes drain.
 const DEFAULT_WRITEBACK_DRAIN_TIMEOUT_MS = 4_000;
+const MAX_REMINDER_TRACE_TIMEOUT_MS = 1_000;
 
 /** Register DSH-native retrieval and durable Turn writeback listeners. */
 export function registerMemoraxCodePlugin(ctx, dependencies) {
@@ -19,6 +21,8 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
   const scheduleRepoMemoryBuild = dependencies?.scheduleRepoMemoryBuild;
   const intervalTurns = dependencies?.intervalTurns;
   const isReminderDue = dependencies?.isReminderDue;
+  const memoryReminderContext = nonEmptyString(dependencies?.memoryReminderContext);
+  const personalMemoryReminderContext = nonEmptyString(dependencies?.personalMemoryReminderContext);
   const defer = dependencies?.defer ?? queueMicrotask;
   const debug = dependencies?.debug ?? process.env.MEMORAX_CODE_DSH_DEBUG === "1";
   const drainTimeoutMs = positiveInteger(
@@ -44,6 +48,9 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
   if (typeof isReminderDue !== "function") {
     throw new TypeError("memorax-code DSH plugin requires a reminder policy");
   }
+  if (!memoryReminderContext || !personalMemoryReminderContext) {
+    throw new TypeError("memorax-code DSH plugin requires reminder context");
+  }
   if (typeof ctx?.sessions?.flush !== "function"
     || typeof ctx?.sessionPersistence?.readFrom !== "function") {
     throw new TypeError("memorax-code DSH plugin requires sessions and sessionPersistence");
@@ -51,17 +58,36 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
 
   const turns = new WeakMap();
   const personalContexts = new WeakMap();
+  const pendingContextMessages = new WeakMap();
   const writebackTails = new WeakMap();
   const retrievalLifetime = new AbortController();
   const writebackLifetime = new AbortController();
+  const pendingReminderTraces = new Set();
   const pendingWritebacks = new Set();
   let accepting = true;
 
   ctx.on("session/event", (session, event) => {
     if (!isMemoryEligibleSession(session) || !accepting) return;
-    if (event?.type === "compaction/end") {
-      if (event.data && typeof event.data === "object" && event.data.error === undefined) {
-        personalContextState(personalContexts, session).compactionGeneration += 1;
+    if (event?.type === "user/message") {
+      const pendingContext = takePendingContextMessage(
+        pendingContextMessages,
+        session,
+        event.data,
+      );
+      if (pendingContext) {
+        pendingContext.personalContext.commit();
+        if (pendingContext.personalContext.triggers.length > 0) {
+          trackPending(pendingReminderTraces, recordSkillReminder({
+            backendClient,
+            ctx,
+            cwd: pendingContext.cwd,
+            debug,
+            personalContext: pendingContext.personalContext,
+            session,
+            turn: pendingContext.turn,
+            turns,
+          }));
+        }
       }
       return;
     }
@@ -76,6 +102,7 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
       sessionTurns.set(turn, {
         startSeq: event.seq,
         retrievalAttempted: false,
+        turnStartRecorded: false,
         closed: false,
       });
       return;
@@ -83,6 +110,7 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
     if (event?.type !== "turn/end") return;
     const turn = event.data?.turn;
     if (!positiveSafeInteger(turn) || !nonNegativeSafeInteger(event.seq)) return;
+    discardPendingContextMessages(pendingContextMessages, session, turn);
     const state = turns.get(session)?.get(turn);
     if (!state || state.invalid || state.closed || event.seq < state.startSeq) return;
     state.closed = true;
@@ -105,6 +133,7 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
   });
 
   ctx.on("session/disposed", (session) => {
+    discardPendingContextMessages(pendingContextMessages, session);
     turns.delete(session);
   });
 
@@ -141,12 +170,14 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
       intervalTurns,
       isReminderDue,
       loadPersonalContext,
+      memoryReminderContext,
       personalContexts,
+      personalMemoryReminderContext,
+      repoMemoryWorktree: turns.get(agent.session)?.get(turn)?.repoMemoryWorktree,
       session: agent.session,
       signal: retrievalSignal,
       step,
       turn,
-      cwd: turns.get(agent.session)?.get(turn)?.repoMemoryWorktree,
     });
     if (signal?.aborted || !accepting || !runtimeEnabled(assertEnabled, ctx, debug)) {
       personalContext?.discard();
@@ -154,24 +185,37 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
     }
     const context = [
       recallContext,
-      personalContext?.profileContext,
-      personalContext?.procedureContext,
+      personalContext?.context,
     ].filter(Boolean).join("\n\n");
     if (!context) {
       personalContext?.commit();
       return decision;
     }
+    const contextMessage = createUserMessage({
+      content: [{ type: "text", text: context }],
+      source: contextSource((personalContext?.triggers.length ?? 0) > 0),
+    });
     const result = {
       kind: "enter",
       messages: [
         ...decision.messages,
-        createUserMessage({
-          content: [{ type: "text", text: context }],
-          source: { kind: "plugin", plugin: CONTEXT_SOURCE_PLUGIN, form: "context" },
-        }),
+        contextMessage,
       ],
     };
-    personalContext?.commit();
+    if (personalContext) {
+      try {
+        stagePendingContextMessage(pendingContextMessages, agent.session, {
+          context,
+          cwd,
+          message: contextMessage,
+          personalContext,
+          turn,
+        });
+      } catch (error) {
+        personalContext.discard();
+        throw error;
+      }
+    }
     return result;
   });
 
@@ -179,10 +223,52 @@ export function registerMemoraxCodePlugin(ctx, dependencies) {
     ctx.effect(() => async () => {
       accepting = false;
       retrievalLifetime.abort(new Error("memorax-code DSH plugin disposed"));
-      await waitForPending(pendingWritebacks, drainTimeoutMs);
+      await Promise.all([
+        waitForPending(pendingWritebacks, drainTimeoutMs),
+        waitForPending(pendingReminderTraces, MAX_REMINDER_TRACE_TIMEOUT_MS),
+      ]);
       writebackLifetime.abort(new Error("memorax-code DSH plugin disposed"));
     }, "memorax-code.lifecycle");
   }
+}
+
+function contextSource(isReminder) {
+  return isReminder
+    ? {
+        kind: "plugin",
+        plugin: CONTEXT_SOURCE_PLUGIN,
+        form: "notice",
+        summary: "MemoraX Code",
+      }
+    : { kind: "plugin", plugin: CONTEXT_SOURCE_PLUGIN };
+}
+
+function stagePendingContextMessage(pendingMessages, session, pending) {
+  const { message, ...staged } = pending;
+  const messageId = nonEmptyString(message?.id);
+  if (!messageId) throw new TypeError("memorax-code DSH context message requires an id");
+  if (pendingMessages.has(session)) throw new Error("memorax-code DSH context message already pending");
+  pendingMessages.set(session, { ...staged, messageId });
+}
+
+function takePendingContextMessage(pendingMessages, session, message) {
+  const messageId = nonEmptyString(message?.id);
+  if (!messageId
+    || message?.source?.kind !== "plugin"
+    || message.source.plugin !== CONTEXT_SOURCE_PLUGIN) return undefined;
+  const pending = pendingMessages.get(session);
+  if (!pending
+    || pending.messageId !== messageId
+    || textContent(message.content) !== pending.context) return undefined;
+  pendingMessages.delete(session);
+  return pending;
+}
+
+function discardPendingContextMessages(pendingMessages, session, turn) {
+  const pending = pendingMessages.get(session);
+  if (!pending || (turn !== undefined && pending.turn !== turn)) return;
+  pendingMessages.delete(session);
+  pending.personalContext.discard();
 }
 
 async function collectRecallContext(options) {
@@ -203,6 +289,7 @@ async function collectRecallContext(options) {
     });
     const response = await options.backendClient.recordTurnStart(command, { signal: options.signal });
     if (options.signal?.aborted) return undefined;
+    state.turnStartRecorded = true;
     state.repoMemoryWorktree = nonEmptyString(response?.repoMemoryWorktree);
     if (state.repoMemoryWorktree && typeof options.scheduleRepoMemoryBuild === "function") {
       try {
@@ -219,48 +306,90 @@ async function collectRecallContext(options) {
 }
 
 async function collectPersonalContext(options) {
-  if (!options.cwd) return undefined;
   const state = personalContextState(options.personalContexts, options.session);
-  const firstObservation = state.firstObservedTurn === undefined;
-  const cadenceTurn = firstObservation ? 1 : options.turn - state.firstObservedTurn + 1;
-  const compactionGeneration = state.compactionGeneration;
+  const projection = reminderProjection(
+    options.session,
+    options.turn,
+    options.intervalTurns,
+    options.memoryReminderContext,
+    options.personalMemoryReminderContext,
+  );
+  const firstObservation = !state.observed;
+  const compactionGeneration = projection.compactionGeneration;
+  const cadenceDue = options.step === 1
+    && options.isReminderDue(projection.cadenceTurnCount, options.intervalTurns);
+  const postCompactionDue = projection.postCompactionDue;
   const includeProfile = firstObservation
     || state.appliedCompactionGeneration < compactionGeneration;
-  const includeProcedure = firstObservation
-    || (options.step === 1
-      && state.lastProcedureTurn !== options.turn
-      && options.isReminderDue(cadenceTurn, options.intervalTurns));
+  const includeProcedure = firstObservation || cadenceDue;
   if (!includeProfile && !includeProcedure) return undefined;
   if (state.lastAttempt?.turn === options.turn
     && state.lastAttempt?.compactionGeneration === compactionGeneration) return undefined;
   const attempt = { turn: options.turn, compactionGeneration };
   state.lastAttempt = attempt;
 
-  try {
-    const result = await options.loadPersonalContext({
-      cwd: options.cwd,
-      includeProfile,
-      includeProcedure,
-    }, { signal: options.signal });
-    options.signal?.throwIfAborted();
-    return {
-      profileContext: nonEmptyString(result?.profileContext),
-      procedureContext: nonEmptyString(result?.procedureContext),
-      commit() {
-        if (firstObservation) state.firstObservedTurn = options.turn;
-        if (includeProfile) state.appliedCompactionGeneration = compactionGeneration;
-        if (includeProcedure) state.lastProcedureTurn = options.turn;
-      },
-      discard() {
-        if (state.lastAttempt === attempt) state.lastAttempt = undefined;
-      },
-    };
-  } catch (error) {
-    if (options.signal?.aborted && state.lastAttempt === attempt) {
-      state.lastAttempt = undefined;
+  let loaded = false;
+  let profileContext;
+  let procedureContext;
+  if (options.repoMemoryWorktree) {
+    try {
+      const result = await options.loadPersonalContext({
+        cwd: options.repoMemoryWorktree,
+        includeProfile,
+        includeProcedure,
+      }, { signal: options.signal });
+      options.signal?.throwIfAborted();
+      loaded = true;
+      profileContext = nonEmptyString(result?.profileContext);
+      procedureContext = nonEmptyString(result?.procedureContext);
+    } catch (error) {
+      if (options.signal?.aborted && state.lastAttempt === attempt) {
+        state.lastAttempt = undefined;
+      }
+      debugFailure(options.ctx, options.debug, "personal context", error);
+      if (!cadenceDue && !postCompactionDue) return undefined;
     }
-    debugFailure(options.ctx, options.debug, "personal context", error);
-    return undefined;
+  }
+  const triggers = [
+    ...(cadenceDue ? ["cadence"] : []),
+    ...(postCompactionDue ? ["post_compaction"] : []),
+  ];
+  const reminderParts = [];
+  if (cadenceDue) reminderParts.push(options.memoryReminderContext);
+  if (postCompactionDue || (cadenceDue && firstObservation && profileContext)) {
+    reminderParts.push(options.personalMemoryReminderContext);
+  }
+  if (profileContext) reminderParts.push(profileContext);
+  if (procedureContext) reminderParts.push(procedureContext);
+  return {
+    context: reminderParts.join("\n\n"),
+    triggers,
+    commit() {
+      if (loaded) {
+        state.observed = true;
+        if (includeProfile) state.appliedCompactionGeneration = compactionGeneration;
+      }
+    },
+    discard() {
+      if (state.lastAttempt === attempt) state.lastAttempt = undefined;
+    },
+  };
+}
+
+async function recordSkillReminder(options) {
+  if (typeof options.backendClient.recordSkillReminder !== "function") return;
+  const turnState = options.turns.get(options.session)?.get(options.turn);
+  if (!turnState?.turnStartRecorded) return;
+  try {
+    await options.backendClient.recordSkillReminder(createSkillReminderCommand({
+      sessionId: options.session.id,
+      turn: options.turn,
+      cwd: options.cwd,
+      content: options.personalContext.context,
+      triggers: options.personalContext.triggers,
+    }), { signal: AbortSignal.timeout(MAX_REMINDER_TRACE_TIMEOUT_MS) });
+  } catch (error) {
+    debugFailure(options.ctx, options.debug, "reminder trace", error);
   }
 }
 
@@ -353,12 +482,72 @@ function personalContextState(personalContexts, session) {
   let state = personalContexts.get(session);
   if (!state) {
     state = {
-      compactionGeneration: 0,
+      observed: false,
       appliedCompactionGeneration: 0,
     };
     personalContexts.set(session, state);
   }
   return state;
+}
+
+function reminderProjection(
+  session,
+  turn,
+  intervalTurns,
+  memoryReminderContext,
+  personalMemoryReminderContext,
+) {
+  const events = ownedSessionEvents(session);
+  if (!events) {
+    return {
+      cadenceTurnCount: turn,
+      compactionGeneration: 0,
+      postCompactionDue: false,
+    };
+  }
+  let turnsSinceReminder;
+  let compactionGeneration = 0;
+  let postCompactionDue = false;
+  for (const event of events) {
+    if (event?.type === "turn/start" && turnsSinceReminder !== undefined) {
+      turnsSinceReminder += 1;
+    }
+    if (isSuccessfulCompaction(event)) {
+      compactionGeneration += 1;
+      postCompactionDue = true;
+    }
+    const reminderText = acceptedReminderText(event);
+    if (reminderText?.includes(memoryReminderContext)) turnsSinceReminder = 0;
+    if (reminderText?.includes(personalMemoryReminderContext)) postCompactionDue = false;
+  }
+  const cadenceTurnCount = turnsSinceReminder === undefined
+    ? 1
+    : turnsSinceReminder === 0
+      ? 0
+      : Math.min(turnsSinceReminder + 1, intervalTurns + 1);
+  return { cadenceTurnCount, compactionGeneration, postCompactionDue };
+}
+
+function ownedSessionEvents(session) {
+  if (!Array.isArray(session?.events)) return undefined;
+  const seedLength = session.header?.seedLength ?? 0;
+  if (!nonNegativeSafeInteger(seedLength) || seedLength > session.events.length) return undefined;
+  return session.events.slice(seedLength);
+}
+
+function isSuccessfulCompaction(event) {
+  return event?.type === "compaction/end"
+    && event.data !== null
+    && typeof event.data === "object"
+    && event.data.error === undefined;
+}
+
+function acceptedReminderText(event) {
+  if (event?.type !== "user/message"
+    || event.data?.source?.kind !== "plugin"
+    || event.data.source.plugin !== CONTEXT_SOURCE_PLUGIN
+    || event.data.source.form !== "notice") return undefined;
+  return textContent(event.data.content);
 }
 
 function positiveSafeInteger(value) {

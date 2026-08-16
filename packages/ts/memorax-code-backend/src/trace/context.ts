@@ -8,6 +8,7 @@ export type TraceContextOrigin =
   | "codex-hook-body"
   | "claude-hook-body"
   | "dsh-cordis-turn-start"
+  | "dsh-cordis-reminder"
   | "dsh-session-event-log"
   | "opencode-hook-body"
   | "current-turn-file"
@@ -114,6 +115,13 @@ export function traceContextFromDshTurnStart(
   return traceContextFromDshBody(body, "dsh-cordis-turn-start", capturedAt);
 }
 
+export function traceContextFromDshSkillReminder(
+  body: unknown,
+  capturedAt = new Date().toISOString(),
+): TraceContext | undefined {
+  return traceContextFromDshBody(body, "dsh-cordis-reminder", capturedAt);
+}
+
 export function traceContextFromDshSessionEventLog(
   body: unknown,
   capturedAt = new Date().toISOString(),
@@ -186,7 +194,10 @@ export function isTraceClient(value: unknown): value is TraceClient {
 
 function traceContextFromDshBody(
   body: unknown,
-  contextOrigin: Extract<TraceContextOrigin, "dsh-cordis-turn-start" | "dsh-session-event-log">,
+  contextOrigin: Extract<
+    TraceContextOrigin,
+    "dsh-cordis-turn-start" | "dsh-cordis-reminder" | "dsh-session-event-log"
+  >,
   capturedAt: string,
 ): TraceContext | undefined {
   if (!isRecord(body)) return undefined;

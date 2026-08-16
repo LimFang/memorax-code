@@ -27,6 +27,8 @@ const PNPM_SPEC = "pnpm@11.7.0";
 const RECALL = "MEMORAX_DSH_E2E_RECALL_7D49";
 const USER_PROFILE = "MEMORAX_DSH_E2E_USER_PROFILE_C42A";
 const PROCEDURE_MEMORY = "MEMORAX_DSH_E2E_PROCEDURE_8F13";
+const MEMORY_REMINDER = "MemoraX Code reminder: proactively invoke /memorax-code";
+const PERSONAL_MEMORY_REMINDER = "MemoraX Code personal-memory reminder: Use /memorax-code";
 const REASONING = "MEMORAX_DSH_E2E_REASONING_B31C";
 const REPLY = "MEMORAX_DSH_E2E_VISIBLE_REPLY_5A62";
 const FIRST_PROMPT = "MEMORAX_DSH_E2E_FIRST_TURN";
@@ -273,14 +275,33 @@ async function main() {
   assert.match(JSON.stringify(firstModelRequest.body), new RegExp(RECALL));
   assert.match(JSON.stringify(firstModelRequest.body), new RegExp(USER_PROFILE));
   assert.match(JSON.stringify(firstModelRequest.body), new RegExp(PROCEDURE_MEMORY));
-  const firstSession = [...(await snapshotFiles(sessionsRoot)).values()]
-    .find((content) => content.includes(FIRST_PROMPT));
-  assert.ok(firstSession);
+  assert.match(JSON.stringify(firstModelRequest.body), new RegExp(MEMORY_REMINDER));
+  assert.match(JSON.stringify(firstModelRequest.body), new RegExp(PERSONAL_MEMORY_REMINDER));
+  const firstSessionEntry = [...(await snapshotFiles(sessionsRoot)).entries()]
+    .find(([, content]) => content.includes(FIRST_PROMPT));
+  assert.ok(firstSessionEntry);
+  const [, firstSession] = firstSessionEntry;
+  const firstSessionId = JSON.parse(firstSession.split("\n", 1)[0]).id;
+  assert.ok(typeof firstSessionId === "string" && firstSessionId);
   assert.match(firstSession, new RegExp(RECALL));
   assert.match(firstSession, new RegExp(USER_PROFILE));
   assert.match(firstSession, new RegExp(PROCEDURE_MEMORY));
+  assert.match(firstSession, new RegExp(MEMORY_REMINDER));
+  assert.match(firstSession, new RegExp(PERSONAL_MEMORY_REMINDER));
   assert.match(firstSession, new RegExp(REASONING));
   assert.match(firstSession, /skill_content[^\n]*memorax-code/s);
+  const firstTraceEventsPath = join(paths.memoraxHome, "debug", "traces", "dsh",
+    "sessions", firstSessionId, "events.jsonl");
+  await waitFor(async () => (
+    await readFile(firstTraceEventsPath, "utf8").catch(() => "")
+  ).includes('"skill_reminder"'), "first DSH reminder trace");
+  const firstReminderEvents = (await readJsonLines(firstTraceEventsPath))
+    .filter((event) => event.type === "skill_reminder");
+  assert.equal(firstReminderEvents.length, 1);
+  assert.equal(firstReminderEvents[0].source, "dsh-cordis");
+  assert.equal(firstReminderEvents[0].trace?.context_origin, "dsh-cordis-reminder");
+  assert.deepEqual(firstReminderEvents[0].request?.triggers, ["cadence"]);
+  assert.match(JSON.stringify(firstReminderEvents[0].response), new RegExp(MEMORY_REMINDER));
   await writeFile(join(paths.workspace, ".repo_memory", "PROFILE.md"),
     "# E2E auto-build dispatch sentinel\n");
 
@@ -349,6 +370,7 @@ async function main() {
     searches: requests("/v1/memories/search").length,
     adds: requests("/v1/memories/add").length,
     firstTurnCanonicalSkillRoundTrip: true,
+    firstTurnNativeSkillReminder: true,
     firstTurnPersonalContext: true,
     repoMemoryAutoBuildDispatchedOnce: true,
     repoMemoryRuntimeHomeCanonical: true,
@@ -403,6 +425,8 @@ function assertAdd(request, prompt) {
   assert.doesNotMatch(serialized, new RegExp(RECALL));
   assert.doesNotMatch(serialized, new RegExp(USER_PROFILE));
   assert.doesNotMatch(serialized, new RegExp(PROCEDURE_MEMORY));
+  assert.doesNotMatch(serialized, /MemoraX Code reminder:/);
+  assert.doesNotMatch(serialized, /MemoraX Code personal-memory reminder:/);
   assert.doesNotMatch(serialized, new RegExp(REASONING));
   assert.doesNotMatch(serialized, /skill_content/);
 }

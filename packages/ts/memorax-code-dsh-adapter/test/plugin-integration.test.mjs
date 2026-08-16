@@ -3,7 +3,11 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 
-import { isMemorySkillReminderDue } from "../../memorax-code-adapter-common/src/hooks/memory-skill-reminder-policy.mjs";
+import {
+  isMemorySkillReminderDue,
+  memorySkillReminderContext,
+  personalMemoryReminderContext,
+} from "../../memorax-code-adapter-common/src/hooks/memory-skill-reminder-policy.mjs";
 import { createDshUserMessage } from "../src/dsh-message.mjs";
 import { loadDshPersonalContext } from "../src/personal-context.mjs";
 import {
@@ -11,11 +15,15 @@ import {
   registerMemoraxCodePlugin,
 } from "../src/plugin.mjs";
 
+const MEMORY_REMINDER_CONTEXT = memorySkillReminderContext("/memorax-code");
+const PERSONAL_MEMORY_REMINDER_CONTEXT = personalMemoryReminderContext("/memorax-code");
+
 test("retrieves once and writes the exact durable top-level DSH Turn", async () => {
   const deferred = [];
   const calls = [];
   const personalContextCalls = [];
   const scheduledRepos = [];
+  const reminders = [];
   const turnStarts = [];
   const writebacks = [];
   let persisted;
@@ -39,6 +47,11 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
         repoMemoryWorktree: "/workspace/project",
       };
     },
+    async recordSkillReminder(command) {
+      calls.push("backend:skill-reminder");
+      reminders.push(command);
+      return { ok: true };
+    },
     async writebackTurn(command) {
       calls.push("backend:writeback");
       writebacks.push(command);
@@ -52,8 +65,8 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
     loadPersonalContext: async (input) => {
       personalContextCalls.push(input);
       return {
-        profileContext: "Active user profile",
-        procedureContext: "Active procedure memory",
+        ...(input.includeProfile ? { profileContext: "Active user profile" } : {}),
+        ...(input.includeProcedure ? { procedureContext: "Active procedure memory" } : {}),
       };
     },
     scheduleRepoMemoryBuild: (repo) => scheduledRepos.push(repo),
@@ -89,13 +102,25 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
   assert.deepEqual(decision.messages[2].source, {
     kind: "plugin",
     plugin: "memorax-code-dsh",
-    form: "context",
+    form: "notice",
+    summary: "MemoraX Code",
   });
-  assert.equal(decision.messages[2].content[0].text, [
-    "Relevant shared memory",
-    "Active user profile",
-    "Active procedure memory",
-  ].join("\n\n"));
+  assertContext(decision, "Relevant shared memory", MEMORY_REMINDER_CONTEXT,
+    PERSONAL_MEMORY_REMINDER_CONTEXT, "Active user profile", "Active procedure memory");
+  assert.deepEqual(reminders, [{
+    version: 1,
+    client: "dsh",
+    sessionId: "session-1",
+    turn: 1,
+    cwd: "/workspace/project",
+    content: [
+      MEMORY_REMINDER_CONTEXT,
+      PERSONAL_MEMORY_REMINDER_CONTEXT,
+      "Active user profile",
+      "Active procedure memory",
+    ].join("\n\n"),
+    triggers: ["cadence"],
+  }]);
   assert.deepEqual(personalContextCalls, [{
     cwd: "/workspace/project",
     includeProfile: true,
@@ -177,6 +202,10 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
     parentSession: session.id,
     seedLength: 10,
     delegationDepth: 0,
+    events: [
+      event("turn/start", 0, { turn: 1 }),
+      ...Array.from({ length: 9 }, (_, index) => event("seed/history", index + 1, {})),
+    ],
   });
   ctx.emit("session/event", fork, event("turn/start", 11, { turn: 2 }));
   const forkDecision = await ctx.waterfall("agent/pre-step", {
@@ -189,6 +218,15 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
   assert.equal(turnStarts.length, 2, "an ordinary user fork remains memory eligible");
   assert.equal(turnStarts[1].sessionId, fork.id);
   assert.equal(personalContextCalls.length, 2, "an ordinary user fork gets first-observation context");
+  assertContext(forkDecision, "Relevant shared memory", MEMORY_REMINDER_CONTEXT,
+    PERSONAL_MEMORY_REMINDER_CONTEXT, "Active user profile", "Active procedure memory");
+
+  for (let turn = 3; turn <= 6; turn += 1) {
+    const beforeCadence = await runTurnStartStep(ctx, fork, turn, fork.events.length);
+    assert.doesNotMatch(beforeCadence.messages.at(-1).content[0].text, /MemoraX Code reminder:/);
+  }
+  const nextCadence = await runTurnStartStep(ctx, fork, 7, fork.events.length);
+  assertContext(nextCadence, "Relevant shared memory", MEMORY_REMINDER_CONTEXT, "Active procedure memory");
 });
 
 test("anchors Procedure Memory cadence to the first observed Turn without repeating User Profile", async () => {
@@ -209,13 +247,16 @@ test("anchors Procedure Memory cadence to the first observed Turn without repeat
   }));
 
   const turnFive = await runTurnStartStep(ctx, session, 5, 0);
-  assert.equal(turnFive.messages.at(-1).content[0].text, "User Profile\n\nProcedure Memory");
+  assertContext(turnFive, MEMORY_REMINDER_CONTEXT, PERSONAL_MEMORY_REMINDER_CONTEXT,
+    "User Profile", "Procedure Memory");
 
-  const turnSix = await runTurnStartStep(ctx, session, 6, 10);
-  assert.equal(turnSix.messages.length, 1);
+  for (let turn = 6; turn <= 9; turn += 1) {
+    const beforeCadence = await runTurnStartStep(ctx, session, turn, turn * 10);
+    assert.equal(beforeCadence.messages.length, 1);
+  }
 
-  const turnTen = await runTurnStartStep(ctx, session, 10, 20);
-  assert.equal(turnTen.messages.at(-1).content[0].text, "Procedure Memory");
+  const turnTen = await runTurnStartStep(ctx, session, 10, 100);
+  assertContext(turnTen, MEMORY_REMINDER_CONTEXT, "Procedure Memory");
   const duplicateTurnTen = await ctx.waterfall("agent/pre-step", preStep(session, 10, 1), enterDecision());
   assert.equal(duplicateTurnTen.messages.length, 1);
 
@@ -233,14 +274,16 @@ test("anchors Procedure Memory cadence to the first observed Turn without repeat
   ]);
 });
 
-test("restores only User Profile after successful compaction", async () => {
+test("restores User Profile after compaction and combines it with a cadence reminder", async () => {
   const personalContextCalls = [];
+  const reminders = [];
   const session = topLevelSession();
   const ctx = mockContext({
     flush: async () => true,
     readFrom: async () => undefined,
   });
   registerMemoraxCodePlugin(ctx, pluginDependencies({
+    backendClient: reminderBackend(reminders),
     loadPersonalContext: async (input) => {
       personalContextCalls.push(input);
       return {
@@ -253,23 +296,100 @@ test("restores only User Profile after successful compaction", async () => {
   await runTurnStartStep(ctx, session, 1, 0);
   ctx.emit("session/event", session, event("compaction/end", 4, {}));
   const restored = await ctx.waterfall("agent/pre-step", preStep(session, 1, 2), enterDecision());
-  assert.equal(restored.messages.at(-1).content[0].text, "User Profile 2");
+  assertContext(restored, PERSONAL_MEMORY_REMINDER_CONTEXT, "User Profile 2");
 
-  ctx.emit("session/event", session, event("compaction/end", 5, { error: "failed" }));
+  for (let turn = 2; turn <= 5; turn += 1) {
+    await runTurnStartStep(ctx, session, turn, turn * 10);
+  }
+  ctx.emit("session/event", session, event("compaction/end", 55, {}));
+  const combined = await runTurnStartStep(ctx, session, 6, 60);
+  assertContext(combined, MEMORY_REMINDER_CONTEXT, PERSONAL_MEMORY_REMINDER_CONTEXT,
+    "User Profile 3", "Procedure Memory");
+
+  ctx.emit("session/event", session, event("compaction/end", 61, { error: "failed" }));
   const afterFailure = await ctx.waterfall("agent/pre-step", preStep(session, 1, 3), enterDecision());
   assert.equal(afterFailure.messages.length, 1);
-  assert.deepEqual(personalContextCalls, [
-    {
-      cwd: "/workspace/project",
-      includeProfile: true,
-      includeProcedure: true,
-    },
-    {
-      cwd: "/workspace/project",
-      includeProfile: true,
-      includeProcedure: false,
-    },
+  assert.deepEqual(personalContextCalls.map(({ includeProfile, includeProcedure }) => [
+    includeProfile,
+    includeProcedure,
+  ]), [[true, true], [true, false], [true, true]]);
+  assert.deepEqual(reminders.map((reminder) => reminder.triggers), [
+    ["cadence"],
+    ["post_compaction"],
+    ["cadence", "post_compaction"],
   ]);
+});
+
+test("restores a pending post-compaction reminder from the native session log", async () => {
+  const reminders = [];
+  const priorReminder = {
+    id: "prior-reminder",
+    role: "user",
+    content: [{
+      type: "text",
+      text: [MEMORY_REMINDER_CONTEXT, PERSONAL_MEMORY_REMINDER_CONTEXT, "Earlier User Profile"].join("\n\n"),
+    }],
+    source: {
+      kind: "plugin",
+      plugin: "memorax-code-dsh",
+      form: "notice",
+      summary: "MemoraX Code",
+    },
+  };
+  const session = topLevelSession({
+    events: [
+      event("turn/start", 0, { turn: 1 }),
+      event("user/message", 1, priorReminder),
+      event("compaction/end", 2, { compactionId: "compact-1", turn: 1 }),
+      event("session/end-seed", 3, {}),
+    ],
+  });
+  const ctx = mockContext({
+    flush: async () => true,
+    readFrom: async () => undefined,
+  });
+  registerMemoraxCodePlugin(ctx, pluginDependencies({
+    backendClient: reminderBackend(reminders),
+    loadPersonalContext: async () => ({ profileContext: "Restored User Profile" }),
+  }));
+
+  const restored = await runTurnStartStep(ctx, session, 2, 4);
+  assertContext(restored, PERSONAL_MEMORY_REMINDER_CONTEXT, "Restored User Profile");
+  assert.deepEqual(reminders.map((reminder) => reminder.triggers), [["post_compaction"]]);
+});
+
+test("commits and traces a reminder only after DSH accepts its user message", async () => {
+  const reminders = [];
+  let personalContextLoads = 0;
+  const runtime = {
+    acceptMessages: false,
+    flush: async () => false,
+    readFrom: async () => undefined,
+  };
+  const session = topLevelSession();
+  const ctx = mockContext(runtime);
+  registerMemoraxCodePlugin(ctx, pluginDependencies({
+    backendClient: reminderBackend(reminders),
+    loadPersonalContext: async () => {
+      personalContextLoads += 1;
+      return { profileContext: "User Profile", procedureContext: "Procedure Memory" };
+    },
+  }));
+
+  const cancelled = await runTurnStartStep(ctx, session, 1, 0);
+  assert.match(cancelled.messages.at(-1).content[0].text, /MemoraX Code reminder:/);
+  assert.deepEqual(reminders, []);
+  ctx.emit("session/event", session, event("turn/end", 1, {
+    turn: 1,
+    reason: { kind: "aborted", reason: "cancelled" },
+  }));
+
+  runtime.acceptMessages = true;
+  const retried = await runTurnStartStep(ctx, session, 2, 2);
+  assertContext(retried, MEMORY_REMINDER_CONTEXT, PERSONAL_MEMORY_REMINDER_CONTEXT,
+    "User Profile", "Procedure Memory");
+  assert.equal(personalContextLoads, 2);
+  assert.deepEqual(reminders.map((reminder) => reminder.triggers), [["cadence"]]);
 });
 
 test("does not read local personal context when Backend retrieval fails", async () => {
@@ -296,7 +416,7 @@ test("does not read local personal context when Backend retrieval fails", async 
   }));
 
   const decision = await runTurnStartStep(ctx, session, 1, 0);
-  assert.equal(decision.messages.length, 1);
+  assertContext(decision, MEMORY_REMINDER_CONTEXT);
   assert.equal(personalContextLoads, 0);
   assert.deepEqual(scheduledRepos, []);
 });
@@ -328,7 +448,7 @@ test("loads personal context only after Backend authorizes a repository worktree
   }));
 
   const unauthorized = await runTurnStartStep(ctx, session, 1, 0);
-  assert.equal(unauthorized.messages.length, 1);
+  assertContext(unauthorized, MEMORY_REMINDER_CONTEXT);
   assert.deepEqual(personalContextCalls, []);
   assert.deepEqual(scheduledRepos, []);
 
@@ -375,13 +495,13 @@ test("keeps Backend recall when local context fails and retries it on the next T
   }));
 
   const decision = await runTurnStartStep(ctx, session, 1, 0);
-  assert.equal(decision.messages.at(-1).content[0].text, "Relevant shared memory");
+  assertContext(decision, "Relevant shared memory", MEMORY_REMINDER_CONTEXT);
   const sameTurn = await ctx.waterfall("agent/pre-step", preStep(session, 1, 2), enterDecision());
   assert.equal(sameTurn.messages.length, 1);
   assert.equal(personalContextAttempts, 1);
 
   const retry = await runTurnStartStep(ctx, session, 2, 10);
-  assert.equal(retry.messages.at(-1).content[0].text, "User Profile\n\nProcedure Memory");
+  assertContext(retry, "User Profile", "Procedure Memory");
   assert.equal(personalContextAttempts, 2);
 });
 
@@ -424,7 +544,7 @@ test("does not consume personal context when runtime authority is removed mid-st
 
   enabled = true;
   const retried = await ctx.waterfall("agent/pre-step", preStep(session, 1, 2), enterDecision());
-  assert.equal(retried.messages.at(-1).content[0].text, "User Profile\n\nProcedure Memory");
+  assertContext(retried, "User Profile", "Procedure Memory");
   assert.equal(personalContextAttempts, 1);
 });
 
@@ -700,7 +820,17 @@ function pluginDependencies(overrides = {}) {
     intervalTurns: 5,
     isReminderDue: isMemorySkillReminderDue,
     loadPersonalContext: async () => ({}),
+    memoryReminderContext: MEMORY_REMINDER_CONTEXT,
+    personalMemoryReminderContext: PERSONAL_MEMORY_REMINDER_CONTEXT,
     ...overrides,
+  };
+}
+
+function reminderBackend(reminders, repoMemoryWorktree = "/workspace/project") {
+  return {
+    async recordTurnStart() { return { ok: true, repoMemoryWorktree }; },
+    async recordSkillReminder(command) { reminders.push(command); },
+    async writebackTurn() {},
   };
 }
 
@@ -730,16 +860,22 @@ function enterDecision(text = "How should the adapter work?") {
   });
 }
 
+function assertContext(decision, ...parts) {
+  assert.equal(decision.messages.at(-1).content[0].text, parts.join("\n\n"));
+}
+
 function topLevelSession(overrides = {}) {
-  const id = overrides.id ?? "session-1";
+  const { events = [], ...headerOverrides } = overrides;
+  const id = headerOverrides.id ?? "session-1";
   return {
     id,
+    events,
     header: {
       version: 0,
       id,
       createdAt: 1,
       cwd: "/workspace/project",
-      ...overrides,
+      ...headerOverrides,
     },
   };
 }
@@ -751,7 +887,7 @@ function event(type, seq, data) {
 function mockContext(runtime) {
   const handlers = new Map();
   const disposers = [];
-  return {
+  const context = {
     logger: { warn() {} },
     sessions: { flush: runtime.flush },
     sessionPersistence: { readFrom: runtime.readFrom },
@@ -766,15 +902,31 @@ function mockContext(runtime) {
       if (typeof dispose === "function") disposers.push(dispose);
     },
     emit(name, ...args) {
+      if (name === "session/event") {
+        const [session, sessionEvent] = args;
+        if (Array.isArray(session?.events) && !session.events.includes(sessionEvent)) {
+          session.events.push(sessionEvent);
+        }
+      }
       for (const callback of handlers.get(name) ?? []) callback(...args);
     },
-    waterfall(name, payload, next) {
+    async waterfall(name, payload, next) {
       const [callback] = handlers.get(name) ?? [];
       assert.ok(callback, `missing ${name} listener`);
-      return callback(payload, next);
+      const decision = await callback(payload, next);
+      if (runtime.acceptMessages !== false && decision?.kind === "enter") {
+        for (const message of decision.messages ?? []) {
+          if (message?.source?.kind !== "plugin" || message.source.plugin !== "memorax-code-dsh") continue;
+          const session = payload.agent?.session;
+          const seq = Array.isArray(session?.events) ? session.events.length : 0;
+          context.emit("session/event", session, event("user/message", seq, message));
+        }
+      }
+      return decision;
     },
     async dispose() {
       for (const dispose of disposers.reverse()) await dispose();
     },
   };
+  return context;
 }
