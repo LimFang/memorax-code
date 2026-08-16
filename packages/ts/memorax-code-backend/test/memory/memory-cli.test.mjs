@@ -181,7 +181,7 @@ test("memory CLI rejects a nested repository outside the current turn scope", as
   assert.equal(result.workspaceScopeReason, "workspace_scope_mismatch");
   assert.equal(
     result.userAction,
-    "Start a new Codex, Claude Code, or OpenCode session from the target repository or local workspace.",
+    "Start a new Codex, Claude Code, DSH, or OpenCode session from the target repository or local workspace.",
   );
   assert.equal(requestCount, 0);
 });
@@ -302,7 +302,7 @@ test("memory CLI gives the same scope recovery guidance for a Claude turn", asyn
   assert.equal(result.workspaceScopeReason, "workspace_scope_mismatch");
   assert.equal(
     result.userAction,
-    "Start a new Codex, Claude Code, or OpenCode session from the target repository or local workspace.",
+    "Start a new Codex, Claude Code, DSH, or OpenCode session from the target repository or local workspace.",
   );
   assert.equal(requestCount, 0);
 });

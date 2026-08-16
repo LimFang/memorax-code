@@ -7,6 +7,7 @@ import test from "node:test";
 import { resolveMemoryProject } from "../../../dist/memory/project.js";
 import { authorized, memoryViewerSessionCookieHeader } from "../../../dist/transport/http/request.js";
 import { handleMemoryViewerRequest } from "../../../dist/viewer/http/public-routes.js";
+import { memoryViewerObservabilityHook } from "../../../dist/viewer/projection/observability.js";
 import {
   clearMemoryViewerEvents,
   recordMemoryViewerEvent,
@@ -115,6 +116,21 @@ test("memory viewer user API isolates clients and never returns private event co
     request: { payload: { query: "opencode private query" } },
     response: { items: [{ memory: "opencode private memory" }] },
   });
+  memoryViewerObservabilityHook().recordEvent?.({
+    source: "automatic_retrieval",
+    operation: "retrieve",
+    ok: true,
+    traceContext: { client: "dsh", sessionId: "dsh-session", turnId: "1", cwd: repo },
+    request: { payload: { query: "dsh private query" } },
+    response: { items: [{ memory: "dsh private memory" }] },
+  });
+  memoryViewerObservabilityHook().recordEvent?.({
+    source: "dsh_native_writeback",
+    operation: "writeback",
+    ok: true,
+    request: { payload: { messages: [{ role: "user", content: "dsh unscoped private writeback" }] } },
+    response: { raw: { data: { task_id: "dsh-private-task", status: "queued" } } },
+  });
 
   const { url, close } = await viewerServer(memoraxCodeHome, {
     repoMemoryReadiness: async () => ({ status: "not_ready", reason: "bundle_missing" }),
@@ -137,7 +153,7 @@ test("memory viewer user API isolates clients and never returns private event co
     assert.equal(codex.projects.every((project) => (
       project.repoMemory.status === "not_ready" && project.repoMemory.reason === "bundle_missing"
     )), true);
-    assert.doesNotMatch(codexText, /codex private|other private|claude private|opencode private/i);
+    assert.doesNotMatch(codexText, /codex private|other private|claude private|opencode private|dsh private/i);
     for (const field of ["prompt", "answer", "query", "results", "details", "sessionId", "turnId"]) {
       assert.equal(codexText.includes(`"${field}"`), false);
     }
@@ -208,6 +224,11 @@ test("memory viewer user routes reject explicit invalid clients", async () => {
     assert.equal((await fetch(`${url}/memory-viewer?client=unknown`)).status, 400);
     assert.equal(
       (await fetch(`${url}/memory-viewer/api/summary?client=unknown`)).status,
+      400,
+    );
+    assert.equal((await fetch(`${url}/memory-viewer?client=dsh`)).status, 400);
+    assert.equal(
+      (await fetch(`${url}/memory-viewer/api/summary?client=dsh`)).status,
       400,
     );
   } finally {
