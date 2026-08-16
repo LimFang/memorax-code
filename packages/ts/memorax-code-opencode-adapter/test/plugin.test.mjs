@@ -23,3 +23,21 @@ test("shell.env overwrites the OpenCode session identity and prepends the manage
   assert.equal(output.env.MEMORAX_CODE_MEMORY_CLI_SESSION_ID, "session-2");
   assert.equal(output.env.PATH, [cliBinDir, "/usr/bin", "/bin"].join(delimiter));
 });
+
+test("shell.env clears inherited session identity without an OpenCode session", async () => {
+  const plugin = createMemoraxOpenCodePlugin();
+  const hooks = await plugin({});
+  const output = {
+    env: {
+      MEMORAX_CODE_MEMORY_CLI_TRACE_CLIENT: "codex",
+      MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID: "old-session",
+      MEMORAX_CODE_MEMORY_CLI_SESSION_ID: "old-session",
+    },
+  };
+
+  await hooks["shell.env"]({}, output);
+
+  assert.equal(output.env.MEMORAX_CODE_MEMORY_CLI_TRACE_CLIENT, "opencode");
+  assert.equal(Object.hasOwn(output.env, "MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID"), false);
+  assert.equal(Object.hasOwn(output.env, "MEMORAX_CODE_MEMORY_CLI_SESSION_ID"), false);
+});

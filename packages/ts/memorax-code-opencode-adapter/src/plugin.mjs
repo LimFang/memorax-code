@@ -7,6 +7,8 @@ export function createMemoraxOpenCodePlugin(options = {}) {
       if (!pluginEnabled(options)) return;
       output.env.MEMORAX_CODE_MEMORY_CLI_TRACE_CLIENT = "opencode";
       const sessionId = stringValue(input?.sessionID);
+      delete output.env.MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID;
+      delete output.env.MEMORAX_CODE_MEMORY_CLI_SESSION_ID;
       if (sessionId) {
         output.env.MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID = sessionId;
         output.env.MEMORAX_CODE_MEMORY_CLI_SESSION_ID = sessionId;
