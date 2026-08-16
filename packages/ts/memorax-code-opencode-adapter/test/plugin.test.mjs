@@ -39,6 +39,37 @@ test("chat.message retrieves memory and injects it into the system prompt", asyn
   });
 });
 
+test("repo-scoped reminder builders require a Backend-authorized worktree", async () => {
+  const evaluations = [];
+  const plugin = createMemoraxOpenCodePlugin({
+    backendConnection: { url: "http://127.0.0.1:8787" },
+    fetchImpl: responseSequence([], [
+      { ok: true },
+      { ok: true, repoMemoryWorktree: "/repo/authorized" },
+    ]),
+    memorySkillReminderEvaluator: async (options, input) => {
+      const profileBuilder = typeof options.buildPersonalMemoryContext === "function";
+      const procedureBuilder = typeof options.buildCadenceReminderContext === "function";
+      const repositoryContext = profileBuilder && procedureBuilder;
+      evaluations.push({ profileBuilder, procedureBuilder, cwd: input.cwd });
+      return { additionalContext: repositoryContext ? "Authorized repo context." : "Generic reminder context." };
+    },
+  });
+  const hooks = await plugin(pluginInput());
+  const generic = promptOutput("user-scope-1", "First prompt");
+  const authorized = promptOutput("user-scope-2", "Second prompt");
+
+  await hooks["chat.message"]({ sessionID: "session-scope" }, generic);
+  await hooks["chat.message"]({ sessionID: "session-scope" }, authorized);
+
+  assert.equal(generic.message.system, "Generic reminder context.");
+  assert.equal(authorized.message.system, "Authorized repo context.");
+  assert.deepEqual(evaluations, [
+    { profileBuilder: false, procedureBuilder: false, cwd: "/repo/worktree" },
+    { profileBuilder: true, procedureBuilder: true, cwd: "/repo/worktree" },
+  ]);
+});
+
 test("managed plugin starts the Backend once and bounds prompt waiting", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-opencode-backend-start-"));
   const nodePath = process.execPath;
@@ -186,6 +217,7 @@ test("OpenCode forwards first-prompt and post-compaction reminders once", async 
       ["cadence"],
       ["post_compaction"],
     ]);
+    assert.equal(reminderRequests.every((request) => request.body.cwd === "/repo/worktree"), true);
     assert.equal(Object.hasOwn(reminderRequests[0].body, "transcriptPath"), false);
   } finally {
     await hooks?.dispose();

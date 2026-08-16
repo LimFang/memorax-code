@@ -333,6 +333,13 @@ Adapter Hooks may schedule a missing bundle build using adapter-common
 supervision, locking, and job-policy helpers. They must use the
 Backend-resolved worktree rather than an arbitrary Hook `cwd`.
 
+Codex and OpenCode keep the generic shared Skill reminder available when the
+Backend or repository scope is unavailable. Their User Profile and Procedure
+Memory builders are enabled only when the current turn-start result includes a
+Backend-resolved worktree, and those builders read that worktree. The original
+client workspace remains metadata when an accepted turn's reminder is traced;
+it is not repository-local content authority.
+
 OpenCode supports active Repo Memory operations through the shared skill, but
 its plugin does not own supervised background Repo Memory maintenance. Its
 automatic runtime contract covers prompt retrieval, shared reminder injection,

@@ -31,7 +31,7 @@ export function createMemoraxOpenCodePlugin(options = {}) {
     const workspaceKind = project?.vcs === "git" ? "project" : "local";
     const pendingTurns = new Map();
     const inFlight = new Set();
-    const reminderOptions = memorySkillReminderOptions(options);
+    const genericReminderOptions = memorySkillReminderOptions(options);
     const reminderEvaluator = options.memorySkillReminderEvaluator ?? evaluateMemorySkillReminder;
     const backendPromptWaitTimeoutMs = positiveInteger(
       options.backendPromptWaitTimeoutValue,
@@ -129,24 +129,33 @@ export function createMemoraxOpenCodePlugin(options = {}) {
         const sessionId = stringValue(input?.sessionID);
         const prompt = textParts(output?.parts);
         if (!sessionId || !userMessageId || !prompt) return;
-        const reminderResult = await evaluateReminder(reminderEvaluator, reminderOptions, {
+        const reminderInput = {
           hookEventName: "UserPromptSubmit",
           sessionId,
           turnId: userMessageId,
           cwd: workspaceRoot,
           workspaceKind,
-        }, options);
+        };
         if (!await backendReadyForPrompt()) {
           debug(
             options,
             "opencode turn start skipped",
             `Backend recovery exceeded the ${backendPromptWaitTimeoutMs} ms interaction budget`,
           );
+          if (!pluginEnabled(options)) return;
+          const reminderResult = await evaluateReminder(
+            reminderEvaluator,
+            genericReminderOptions,
+            reminderInput,
+            options,
+          );
+          if (!pluginEnabled(options)) return;
           appendSystemContexts(output, reminderResult?.additionalContext);
           return;
         }
         if (!pluginEnabled(options)) return;
         let retrievalContext;
+        let repositoryWorktree;
         let turnStartAccepted = false;
         try {
           const result = await postBackend(options, "/memory/turn-start", {
@@ -168,9 +177,20 @@ export function createMemoraxOpenCodePlugin(options = {}) {
             pendingTurns.delete(oldest);
           }
           retrievalContext = stringValue(result?.additionalContext);
+          repositoryWorktree = stringValue(result?.repoMemoryWorktree);
         } catch (error) {
           debug(options, "opencode turn start failed", error);
         }
+        if (!pluginEnabled(options)) return;
+        const reminderResult = await evaluateReminder(
+          reminderEvaluator,
+          repositoryWorktree
+            ? memorySkillReminderOptions(options, repositoryWorktree)
+            : genericReminderOptions,
+          reminderInput,
+          options,
+        );
+        if (!pluginEnabled(options)) return;
         if (turnStartAccepted && reminderResult?.reminder) {
           track(
             recordReminder(options, reminderResult.reminder),
@@ -201,7 +221,7 @@ export function createMemoraxOpenCodePlugin(options = {}) {
       event({ event }) {
         if (!pluginEnabled(options)) return;
         if (event?.type === "session.compacted") {
-          markSupplementalReminderForSession(reminderOptions, event.properties?.sessionID);
+          markSupplementalReminderForSession(genericReminderOptions, event.properties?.sessionID);
           return;
         }
         if (event?.type === "session.status" && event.properties?.status?.type === "idle") {
@@ -337,7 +357,7 @@ function managedPluginEnabled(options) {
     && state?.enabled === true;
 }
 
-function memorySkillReminderOptions(options) {
+function memorySkillReminderOptions(options, repositoryWorktree) {
   const personalMemoryContextOptions = {
     adapterDir: "opencode",
     debugEnv: "MEMORAX_CODE_OPENCODE_PLUGIN_DEBUG",
@@ -346,8 +366,16 @@ function memorySkillReminderOptions(options) {
   return {
     additionalReminderContext: personalMemoryReminderContext(MEMORY_SKILL_INVOCATION),
     adapterDir: "opencode",
-    buildCadenceReminderContext: (input) => buildRepoProcedureMemoryContext(input, personalMemoryContextOptions),
-    buildPersonalMemoryContext: (input) => buildRepoUserProfilePreferencesContext(input, personalMemoryContextOptions),
+    ...(repositoryWorktree ? {
+      buildCadenceReminderContext: (input) => buildRepoProcedureMemoryContext({
+        ...input,
+        cwd: repositoryWorktree,
+      }, personalMemoryContextOptions),
+      buildPersonalMemoryContext: (input) => buildRepoUserProfilePreferencesContext({
+        ...input,
+        cwd: repositoryWorktree,
+      }, personalMemoryContextOptions),
+    } : {}),
     debugEnv: "MEMORAX_CODE_OPENCODE_PLUGIN_DEBUG",
     memoraxCodeHome: options.memoraxCodeHome,
     memorySkillInvocation: MEMORY_SKILL_INVOCATION,
