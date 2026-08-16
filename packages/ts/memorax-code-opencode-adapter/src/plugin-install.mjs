@@ -314,6 +314,14 @@ export function defaultOpenCodeCliBinDir(adapterRoot = ADAPTER_ROOT) {
   return candidates.find(hasMemoraxCliCommand);
 }
 
+export function defaultMemoraxCodeCommand(adapterRoot = ADAPTER_ROOT) {
+  const packageRoot = resolve(adapterRoot, "..", "..");
+  return [
+    join(packageRoot, "bin", "memorax-code.mjs"),
+    join(packageRoot, "npm", "memorax-code", "bin", "memorax-code.mjs"),
+  ].find((path) => existsSync(path));
+}
+
 function resolvePaths(options) {
   const memoraxCodeHome = resolve(options.memoraxCodeHome ?? defaultMemoraxCodeHome());
   const openCodeConfigDir = resolve(options.openCodeConfigDir ?? defaultOpenCodeConfigDir());
@@ -328,6 +336,12 @@ function resolvePaths(options) {
     cliBinDir: stringOption(options.cliBinDir)
       ? resolve(options.cliBinDir)
       : defaultOpenCodeCliBinDir(),
+    nodePath: stringOption(options.nodePath)
+      ? resolve(options.nodePath)
+      : process.execPath,
+    memoraxCodeCommand: stringOption(options.memoraxCodeCommand)
+      ? resolve(options.memoraxCodeCommand)
+      : defaultMemoraxCodeCommand(),
   };
 }
 
@@ -392,6 +406,9 @@ function createManagedLoader(paths, pluginSourceSha256) {
   const pluginOptions = {
     memoraxCodeHome: paths.memoraxCodeHome,
     statePath: paths.statePath,
+    openCodeConfigDir: paths.openCodeConfigDir,
+    ...(paths.memoraxCodeCommand ? { memoraxCodeCommand: paths.memoraxCodeCommand } : {}),
+    nodePath: paths.nodePath,
     ...(paths.cliBinDir ? { cliBinDir: paths.cliBinDir } : {}),
   };
   return [

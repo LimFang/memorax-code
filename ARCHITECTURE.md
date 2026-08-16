@@ -182,6 +182,17 @@ installations are supported. The installer records managed ownership under
 skill artifacts under the OpenCode configuration directory, and leaves model
 and provider configuration untouched.
 
+When that managed plugin is enabled, plugin initialization starts one
+best-effort Backend availability check without blocking OpenCode startup. The
+first prompt shares one bounded interaction budget with that check; expiry
+skips automatic memory handling for the current turn while Backend recovery
+continues in the background. Idle writeback for an already accepted turn may
+wait for the full in-process check. Recovery uses the package-recorded Node
+runtime and `memorax-code start` entrypoint, exact MemoraX Code home and
+OpenCode configuration directory, and the existing lifecycle lock. It does
+not replace persistent client selection, directly spawn the Backend, or
+recover a remote or invalid connection authority.
+
 ### 3.2 Hook and retrieval data flow
 
 ```mermaid
