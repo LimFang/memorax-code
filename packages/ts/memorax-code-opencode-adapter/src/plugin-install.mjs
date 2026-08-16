@@ -127,7 +127,7 @@ export function ensureOpenCodePluginInstalled(options = {}) {
     backendUrlMatches: true,
     opencodeSkills: skillSummary(paths.skillPath, true),
     changed: !current,
-    restartRequired: !pluginCurrent || !skillCurrent,
+    restartRequired: !pluginCurrent || !skillCurrent || previousState?.enabled !== true,
     statePath: paths.statePath,
     pluginPath: paths.pluginPath,
     skillPath: paths.skillPath,

@@ -96,6 +96,11 @@ test("OpenCode plugin install materializes a managed loader, canonical skill, an
     assert.equal(unchanged.changed, false);
     assert.equal(unchanged.restartRequired, false);
 
+    assert.equal(disableOpenCodePlugin(fixture.options).enabled, false);
+    const reenabled = ensureOpenCodePluginInstalled(fixture.options);
+    assert.equal(reenabled.changed, true);
+    assert.equal(reenabled.restartRequired, true);
+
     await writeFile(fixture.pluginSourcePath, "export function createMemoraxOpenCodePlugin() { return 'updated'; }\n");
     assert.equal(readOpenCodePluginStatus(fixture.options).pluginCurrent, false);
     const updated = ensureOpenCodePluginInstalled(fixture.options);
