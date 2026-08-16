@@ -121,6 +121,7 @@ export function createAutomaticMemoryWritebackRuntime(
       return enqueueAutomaticMemoryWritebackForRuntime(state, options);
     },
     discardForScopeUpgrade(upgrade) {
+      if (upgrade.client === "opencode") return 0;
       return state.writebackBuffer.discardForScopeUpgrade({
         client: upgrade.client,
         sessionKey: upgrade.sessionId,
