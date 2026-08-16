@@ -1,9 +1,9 @@
 # Security Policy
 
-MemoraX Code is a local-first integration for Codex and Claude Code with an
-optional external bind mode and required communication with MemoraX for
-cloud-backed memory. Security reports should distinguish the local Backend,
-client-owned provider traffic, and MemoraX memory traffic.
+MemoraX Code is a local-first integration for Codex, Claude Code, and OpenCode
+with an optional external bind mode and required communication with MemoraX
+for cloud-backed memory. Security reports should distinguish the local
+Backend, client-owned provider traffic, and MemoraX memory traffic.
 
 ## Supported Versions
 
@@ -61,6 +61,8 @@ the generated configuration's automatic writeback; automatic retrieval remains
 disabled until explicitly enabled.
 
 Memory searches send the query and repository-scoped identity to MemoraX.
+When OpenCode automatic retrieval is enabled, each eligible user prompt is
+used as the search query.
 Active adds and automatic writeback send the selected content needed to create
 memory. Automatic writeback may include selected user instructions and the
 matching final assistant response from an exact Codex or Claude Code
@@ -113,11 +115,12 @@ the product creates or tightens the home to mode `0700` and newly seeded
 configuration to mode `0600`; Windows relies on the current user's filesystem
 ACLs.
 
-Codex and Claude Code local trace capture is enabled by default and may include
-prompts, responses, recalled memory, writeback content, reminder text, and
-local paths. Trace files stay under `MEMORAX_CODE_HOME`. The shipped package
-has no trace uploader, collector, receiver, or export command. This does not
-change the separate MemoraX queries and writeback described above.
+Codex, Claude Code, and OpenCode local trace capture is enabled by default.
+Depending on the enabled client capabilities, traces may include prompts,
+responses, recalled memory, writeback content, reminder text, and local paths.
+Trace files stay under `MEMORAX_CODE_HOME`. The shipped package has no trace
+uploader, collector, receiver, or export command. This does not change the
+separate MemoraX queries and writeback described above.
 
 The local `/memory-viewer` surface is a content-free activity summary. It must
 not expose conversation or memory text, session/turn identifiers, paths, or

@@ -41,9 +41,9 @@ are not a compatibility contract.
 The generated template selects all three clients, disables automatic retrieval,
 enables automatic writeback, sets the preferred language to Chinese (`zh`),
 uses a five-turn skill reminder and the adaptive repository-update policy, and
-enables content-bearing local traces for Codex and Claude Code. npm installation
-may narrow `[clients]` to clients detected on the host. The tables below list
-all fallbacks, including tuning fields omitted from the generated file.
+enables content-bearing local traces for all three clients. npm installation may
+narrow `[clients]` to clients detected on the host. The tables below list all
+fallbacks, including tuning fields omitted from the generated file.
 
 On POSIX systems MemoraX Code creates `$MEMORAX_CODE_HOME` with mode `0700`
 and a new `config.toml` with mode `0600`. Windows relies on the current user's
@@ -230,24 +230,26 @@ only when the Backend has authorized a Git worktree and that worktree has no
 unavailable, the Hook skips the initial build instead of falling back to its
 local `cwd`.
 
-OpenCode supports active Repo Memory operations through the installed skill;
-background Repo Memory maintenance is added separately from its installation
-lifecycle.
+OpenCode supports active Repo Memory operations through the installed skill,
+but its plugin does not currently run background Repo Memory maintenance. Its
+automatic integration currently covers retrieval.
 
 ## Local traces
 
-`[trace.codex]` and `[trace.claude]` support the same fields:
+`[trace.codex]`, `[trace.claude]`, and `[trace.opencode]` support the same
+fields:
 
-| Field | Codex environment | Claude environment | Fallback |
-| --- | --- | --- | --- |
-| `enabled` | `MEMORAX_CODE_CODEX_TRACE_ENABLED` | `MEMORAX_CODE_CLAUDE_TRACE_ENABLED` | `true` |
-| `capture_content` | `MEMORAX_CODE_CODEX_TRACE_CAPTURE_CONTENT` | `MEMORAX_CODE_CLAUDE_TRACE_CAPTURE_CONTENT` | `true` |
-| `retention_days` | `MEMORAX_CODE_CODEX_TRACE_RETENTION_DAYS` | `MEMORAX_CODE_CLAUDE_TRACE_RETENTION_DAYS` | `7` |
-| `max_event_chars` | `MEMORAX_CODE_CODEX_TRACE_MAX_EVENT_CHARS` | `MEMORAX_CODE_CLAUDE_TRACE_MAX_EVENT_CHARS` | `20000` |
-| `max_file_bytes` | `MEMORAX_CODE_CODEX_TRACE_MAX_FILE_BYTES` | `MEMORAX_CODE_CLAUDE_TRACE_MAX_FILE_BYTES` | `52428800` |
+| Field | Codex environment | Claude environment | OpenCode environment | Fallback |
+| --- | --- | --- | --- | --- |
+| `enabled` | `MEMORAX_CODE_CODEX_TRACE_ENABLED` | `MEMORAX_CODE_CLAUDE_TRACE_ENABLED` | `MEMORAX_CODE_OPENCODE_TRACE_ENABLED` | `true` |
+| `capture_content` | `MEMORAX_CODE_CODEX_TRACE_CAPTURE_CONTENT` | `MEMORAX_CODE_CLAUDE_TRACE_CAPTURE_CONTENT` | `MEMORAX_CODE_OPENCODE_TRACE_CAPTURE_CONTENT` | `true` |
+| `retention_days` | `MEMORAX_CODE_CODEX_TRACE_RETENTION_DAYS` | `MEMORAX_CODE_CLAUDE_TRACE_RETENTION_DAYS` | `MEMORAX_CODE_OPENCODE_TRACE_RETENTION_DAYS` | `7` |
+| `max_event_chars` | `MEMORAX_CODE_CODEX_TRACE_MAX_EVENT_CHARS` | `MEMORAX_CODE_CLAUDE_TRACE_MAX_EVENT_CHARS` | `MEMORAX_CODE_OPENCODE_TRACE_MAX_EVENT_CHARS` | `20000` |
+| `max_file_bytes` | `MEMORAX_CODE_CODEX_TRACE_MAX_FILE_BYTES` | `MEMORAX_CODE_CLAUDE_TRACE_MAX_FILE_BYTES` | `MEMORAX_CODE_OPENCODE_TRACE_MAX_FILE_BYTES` | `52428800` |
 
-Content capture can include prompts, responses, recalled memory, writeback
-content, reminder text, and local paths. Set `capture_content=false` for
+Depending on the enabled client capabilities, content capture can include
+prompts, responses, recalled memory, writeback content, reminder text, and
+local paths. Set `capture_content=false` for
 metadata-only local traces, or `enabled=false` to disable a client's trace.
 Trace files stay under `$MEMORAX_CODE_HOME`; MemoraX Code has no trace upload,
 export, or public collector.
