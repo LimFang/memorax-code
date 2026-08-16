@@ -39,9 +39,11 @@ export function ensureOpenCodePluginInstalled(options = {}) {
   const sourceProblem = validateSources(paths);
   if (sourceProblem) return { ...sourceProblem, action: "opencode-plugin-install" };
 
-  const pluginIsManaged = previousState?.pluginPath === paths.pluginPath;
+  const pluginExists = existsSync(paths.pluginPath);
+  const pluginIsManaged = previousState?.pluginPath === paths.pluginPath
+    && (!pluginExists || isManagedLoader(paths.pluginPath));
   const skillIsManaged = previousState?.skillPath === paths.skillPath;
-  if (existsSync(paths.pluginPath) && !pluginIsManaged) {
+  if (pluginExists && !pluginIsManaged) {
     return conflict("plugin_conflict", paths, paths.pluginPath);
   }
   if (existsSync(paths.skillPath) && !skillIsManaged) {
@@ -61,11 +63,6 @@ export function ensureOpenCodePluginInstalled(options = {}) {
     && previousState?.enabled === true
     && normalizeOptionalBackendUrl(previousState.backendUrl) === backendUrl;
 
-  if (!artifactsCurrent) {
-    materializeSkill(paths.skillSourcePath, paths.skillPath);
-    atomicWriteText(paths.pluginPath, loader);
-  }
-
   const now = new Date().toISOString();
   const state = {
     version: STATE_VERSION,
@@ -83,7 +80,19 @@ export function ensureOpenCodePluginInstalled(options = {}) {
     installedAt: stringOption(previousState?.installedAt) ?? now,
     updatedAt: now,
   };
-  atomicWriteJson(paths.statePath, state);
+  const pluginExisted = existsSync(paths.pluginPath);
+  const skillExisted = existsSync(paths.skillPath);
+  try {
+    if (!artifactsCurrent) {
+      materializeSkill(paths.skillSourcePath, paths.skillPath);
+      atomicWriteText(paths.pluginPath, loader);
+    }
+    atomicWriteJson(paths.statePath, state);
+  } catch (error) {
+    removeNewArtifact(paths.pluginPath, pluginExisted);
+    removeNewArtifact(paths.skillPath, skillExisted, true);
+    throw error;
+  }
   removePreviousInstallation(previousState, paths);
 
   return {
@@ -414,6 +423,15 @@ function removePreviousInstallation(previousState, paths) {
   }
   if (previousState.skillPath !== paths.skillPath) {
     rmSync(previousState.skillPath, { recursive: true, force: true });
+  }
+}
+
+function removeNewArtifact(path, existed, recursive = false) {
+  if (existed) return;
+  try {
+    rmSync(path, { recursive, force: true });
+  } catch {
+    // Preserve the original installation failure.
   }
 }
 

@@ -96,6 +96,44 @@ test("OpenCode plugin install refuses to overwrite an unmanaged discovery file",
   }
 });
 
+test("OpenCode plugin install refuses to overwrite a recorded loader without its managed marker", async () => {
+  const fixture = await createFixture("recorded-loader-conflict");
+  try {
+    const installed = ensureOpenCodePluginInstalled(fixture.options);
+    assert.equal(installed.ok, true);
+    const customLoader = "export const UserPlugin = async () => ({});\n";
+    await writeFile(installed.pluginPath, customLoader);
+
+    const result = ensureOpenCodePluginInstalled(fixture.options);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "plugin_conflict");
+    assert.equal(await readFile(installed.pluginPath, "utf8"), customLoader);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode plugin install removes newly created artifacts when state persistence fails", async () => {
+  const fixture = await createFixture("state-write-failure");
+  const blockedStateDir = join(fixture.options.memoraxCodeHome, "adapters", "opencode");
+  const pluginPath = join(fixture.openCodeConfigDir, "plugins", "memorax-code.js");
+  const skillPath = join(fixture.openCodeConfigDir, "skills", "memorax-code");
+  try {
+    await mkdir(join(fixture.options.memoraxCodeHome, "adapters"), { recursive: true });
+    await writeFile(blockedStateDir, "not a directory\n");
+
+    assert.throws(() => ensureOpenCodePluginInstalled(fixture.options));
+    await assert.rejects(readFile(pluginPath), /ENOENT/);
+    await assert.rejects(readFile(join(skillPath, "SKILL.md")), /ENOENT/);
+
+    await rm(blockedStateDir, { force: true });
+    assert.equal(ensureOpenCodePluginInstalled(fixture.options).ok, true);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("OpenCode plugin removal deletes only the recorded managed artifacts", async () => {
   const fixture = await createFixture("remove");
   try {
