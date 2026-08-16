@@ -8,7 +8,7 @@ import { createMemoraxOpenCodePlugin } from "../src/plugin.mjs";
 
 test("chat.message retrieves memory and injects it into the system prompt", async () => {
   const requests = [];
-  const plugin = createMemoraxOpenCodePlugin({
+  const plugin = createPluginWithoutReminders({
     backendConnection: { url: "http://127.0.0.1:8787", token: "test-token" },
     fetchImpl: responseSequence(requests, [{ ok: true, additionalContext: "Remember the repository boundary." }]),
   });
@@ -37,6 +37,37 @@ test("chat.message retrieves memory and injects it into the system prompt", asyn
     cwd: "/repo/worktree",
     workspaceKind: "project",
   });
+});
+
+test("repo-scoped reminder builders require a Backend-authorized worktree", async () => {
+  const evaluations = [];
+  const plugin = createMemoraxOpenCodePlugin({
+    backendConnection: { url: "http://127.0.0.1:8787" },
+    fetchImpl: responseSequence([], [
+      { ok: true },
+      { ok: true, repoMemoryWorktree: "/repo/authorized" },
+    ]),
+    memorySkillReminderEvaluator: async (options, input) => {
+      const profileBuilder = typeof options.buildPersonalMemoryContext === "function";
+      const procedureBuilder = typeof options.buildCadenceReminderContext === "function";
+      const repositoryContext = profileBuilder && procedureBuilder;
+      evaluations.push({ profileBuilder, procedureBuilder, cwd: input.cwd });
+      return { additionalContext: repositoryContext ? "Authorized repo context." : "Generic reminder context." };
+    },
+  });
+  const hooks = await plugin(pluginInput());
+  const generic = promptOutput("user-scope-1", "First prompt");
+  const authorized = promptOutput("user-scope-2", "Second prompt");
+
+  await hooks["chat.message"]({ sessionID: "session-scope" }, generic);
+  await hooks["chat.message"]({ sessionID: "session-scope" }, authorized);
+
+  assert.equal(generic.message.system, "Generic reminder context.");
+  assert.equal(authorized.message.system, "Authorized repo context.");
+  assert.deepEqual(evaluations, [
+    { profileBuilder: false, procedureBuilder: false, cwd: "/repo/worktree" },
+    { profileBuilder: true, procedureBuilder: true, cwd: "/repo/worktree" },
+  ]);
 });
 
 test("managed plugin starts the Backend once and bounds prompt waiting", async () => {
@@ -73,6 +104,7 @@ test("managed plugin starts the Backend once and bounds prompt waiting", async (
       startTimeoutValue: "1000",
       backendPromptWaitTimeoutValue: "100",
       fetchImpl: responseSequence(requests, [{ ok: true }]),
+      memorySkillReminderEvaluator: async () => ({ additionalContext: "Local reminder context." }),
     });
     process.execPath = join(root, "opencode");
     hooks = await plugin(pluginInput());
@@ -85,15 +117,18 @@ test("managed plugin starts the Backend once and bounds prompt waiting", async (
       "--host", "127.0.0.1",
       "--port", "9",
     ]]);
-    const prompt = (id) => hooks["chat.message"](
-      { sessionID: `session-${id}` },
-      { message: { id }, parts: [{ type: "text", text: id }] },
-    );
-    await Promise.race([
+    const prompt = async (id) => {
+      const output = promptOutput(id, id);
+      await hooks["chat.message"]({ sessionID: `session-${id}` }, output);
+      return output;
+    };
+    const [first, second] = await Promise.race([
       Promise.all([prompt("user-start-1"), prompt("user-start-2")]),
       delay(400).then(() => { throw new Error("Backend prompt wait was not bounded"); }),
     ]);
     assert.equal(requests.length, 0);
+    assert.equal(first.message.system, "Local reminder context.");
+    assert.equal(second.message.system, "Local reminder context.");
 
     await writeFile(releasePath, "release\n");
     await hooks.dispose();
@@ -109,7 +144,7 @@ test("managed plugin starts the Backend once and bounds prompt waiting", async (
 
 test("chat.message does not mistake a user diff summary for compaction", async () => {
   const requests = [];
-  const plugin = createMemoraxOpenCodePlugin({
+  const plugin = createPluginWithoutReminders({
     backendConnection: { url: "http://127.0.0.1:8787" },
     fetchImpl: responseSequence(requests, [{ ok: true }]),
   });
@@ -128,9 +163,9 @@ test("chat.message does not mistake a user diff summary for compaction", async (
   assert.equal(requests[0].body.prompt, "Keep recalling memory.");
 });
 
-test("chat.message ignores compaction and synthetic-only messages", async () => {
+test("chat.message ignores compaction-containing and synthetic-only messages", async () => {
   const requests = [];
-  const plugin = createMemoraxOpenCodePlugin({
+  const plugin = createPluginWithoutReminders({
     backendConnection: { url: "http://127.0.0.1:8787" },
     fetchImpl: responseSequence(requests, []),
   });
@@ -141,6 +176,16 @@ test("chat.message ignores compaction and synthetic-only messages", async () => 
     { message: { id: "user-compaction" }, parts: [{ type: "compaction", auto: true }] },
   );
   await hooks["chat.message"](
+    { sessionID: "session-mixed-compaction" },
+    {
+      message: { id: "user-mixed-compaction" },
+      parts: [
+        { type: "compaction", auto: true },
+        { type: "text", text: "internal compaction summary" },
+      ],
+    },
+  );
+  await hooks["chat.message"](
     { sessionID: "session-synthetic" },
     { message: { id: "user-synthetic" }, parts: [{ type: "text", text: "generated", synthetic: true }] },
   );
@@ -148,9 +193,51 @@ test("chat.message ignores compaction and synthetic-only messages", async () => 
   assert.equal(requests.length, 0);
 });
 
+test("OpenCode forwards first-prompt and post-compaction reminders once", async () => {
+  const memoraxCodeHome = await mkdtemp(join(tmpdir(), "memorax-code-opencode-reminder-"));
+  const requests = [];
+  let hooks;
+  try {
+    const plugin = createMemoraxOpenCodePlugin({
+      memoraxCodeHome,
+      backendConnection: { url: "http://127.0.0.1:8787" },
+      fetchImpl: memoryResponse(requests),
+    });
+    hooks = await plugin(pluginInput());
+
+    const first = promptOutput("user-reminder-1", "First prompt");
+    await hooks["chat.message"]({ sessionID: "session-reminder" }, first);
+    hooks.event({
+      event: {
+        type: "session.compacted",
+        properties: { sessionID: "session-reminder" },
+      },
+    });
+    const second = promptOutput("user-reminder-2", "After compaction");
+    await hooks["chat.message"]({ sessionID: "session-reminder" }, second);
+    const third = promptOutput("user-reminder-3", "Later prompt");
+    await hooks["chat.message"]({ sessionID: "session-reminder" }, third);
+
+    await hooks.dispose();
+    assert.match(first.message.system, /MemoraX Code reminder: proactively invoke/);
+    assert.match(second.message.system, /MemoraX Code personal-memory reminder/);
+    assert.equal(third.message.system, "Retrieved user-reminder-3.");
+    const reminderRequests = requests.filter((request) => request.path === "/memory/skill-reminder");
+    assert.deepEqual(reminderRequests.map((request) => request.body.triggers), [
+      ["cadence"],
+      ["post_compaction"],
+    ]);
+    assert.equal(reminderRequests.every((request) => request.body.cwd === "/repo/worktree"), true);
+    assert.equal(Object.hasOwn(reminderRequests[0].body, "transcriptPath"), false);
+  } finally {
+    await hooks?.dispose();
+    await rm(memoraxCodeHome, { recursive: true, force: true });
+  }
+});
+
 test("shell.env overwrites the OpenCode session identity and prepends the managed CLI path", async () => {
   const cliBinDir = "/memorax/bin";
-  const plugin = createMemoraxOpenCodePlugin({ cliBinDir });
+  const plugin = createPluginWithoutReminders({ cliBinDir });
   const hooks = await plugin(pluginInput());
   const output = {
     env: {
@@ -193,7 +280,7 @@ test("a loaded plugin follows the managed enabled state without an OpenCode rest
   const requests = [];
   try {
     await writeState(false);
-    const plugin = createMemoraxOpenCodePlugin({
+    const plugin = createPluginWithoutReminders({
       statePath,
       backendConnection: { url: "http://127.0.0.1:8787" },
       fetchImpl: responseSequence(requests, [{ ok: true }]),
@@ -257,7 +344,7 @@ test("idle reads authoritative SDK messages and dispose drains the pending write
       },
     },
   });
-  const plugin = createMemoraxOpenCodePlugin({
+  const plugin = createPluginWithoutReminders({
     backendConnection: { url: "http://127.0.0.1:8787" },
     fetchImpl: responseSequence(requests, [{ ok: true }, { ok: true }]),
   });
@@ -339,7 +426,7 @@ test("idle discards HTTP 413 without starving a runtime-closed retry", async () 
       },
     ];
   });
-  const plugin = createMemoraxOpenCodePlugin({
+  const plugin = createPluginWithoutReminders({
     backendConnection: { url: "http://127.0.0.1:8787" },
     fetchImpl: responseSequence(requests, [
       { ok: true },
@@ -384,6 +471,35 @@ function pluginInput(overrides = {}) {
     directory: "/repo/directory",
     worktree: "/repo/worktree",
     ...overrides,
+  };
+}
+
+function createPluginWithoutReminders(options) {
+  return createMemoraxOpenCodePlugin({
+    memorySkillReminderEvaluator: async () => undefined,
+    ...options,
+  });
+}
+
+function promptOutput(id, text, system) {
+  return {
+    message: { id, ...(system ? { system } : {}) },
+    parts: [{ type: "text", text }],
+  };
+}
+
+function memoryResponse(requests) {
+  return async (url, options) => {
+    const parsedUrl = new URL(url);
+    const body = JSON.parse(options.body);
+    requests.push({ url: String(url), path: parsedUrl.pathname, options, body });
+    const responseBody = parsedUrl.pathname === "/memory/turn-start"
+      ? { ok: true, additionalContext: `Retrieved ${body.userMessageId}.` }
+      : { ok: true };
+    return new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   };
 }
 
