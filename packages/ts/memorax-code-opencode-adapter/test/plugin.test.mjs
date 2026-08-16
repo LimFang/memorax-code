@@ -163,7 +163,7 @@ test("chat.message does not mistake a user diff summary for compaction", async (
   assert.equal(requests[0].body.prompt, "Keep recalling memory.");
 });
 
-test("chat.message ignores compaction and synthetic-only messages", async () => {
+test("chat.message ignores compaction-containing and synthetic-only messages", async () => {
   const requests = [];
   const plugin = createPluginWithoutReminders({
     backendConnection: { url: "http://127.0.0.1:8787" },
@@ -174,6 +174,16 @@ test("chat.message ignores compaction and synthetic-only messages", async () => 
   await hooks["chat.message"](
     { sessionID: "session-compaction" },
     { message: { id: "user-compaction" }, parts: [{ type: "compaction", auto: true }] },
+  );
+  await hooks["chat.message"](
+    { sessionID: "session-mixed-compaction" },
+    {
+      message: { id: "user-mixed-compaction" },
+      parts: [
+        { type: "compaction", auto: true },
+        { type: "text", text: "internal compaction summary" },
+      ],
+    },
   );
   await hooks["chat.message"](
     { sessionID: "session-synthetic" },

@@ -127,6 +127,7 @@ export function createMemoraxOpenCodePlugin(options = {}) {
         if (!pluginEnabled(options)) return;
         const userMessageId = stringValue(output?.message?.id) ?? stringValue(input?.messageID);
         const sessionId = stringValue(input?.sessionID);
+        if (Array.isArray(output?.parts) && output.parts.some((part) => part?.type === "compaction")) return;
         const prompt = textParts(output?.parts);
         if (!sessionId || !userMessageId || !prompt) return;
         const reminderInput = {
