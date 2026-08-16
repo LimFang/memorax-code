@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { commandOnPath } from "../lib/vscode-extension-command.mjs";
 
 const postinstallPath = fileURLToPath(new URL("../bin/memorax-code-plugin-postinstall.mjs", import.meta.url));
 const adapterCommonSourceRoot = fileURLToPath(new URL(
@@ -27,6 +28,13 @@ const vscodeExtensionCommandPath = fileURLToPath(new URL("../lib/vscode-extensio
 const windowsCliInvocationPath = fileURLToPath(new URL("../lib/windows-cli-invocation.mjs", import.meta.url));
 const smolTomlPath = fileURLToPath(new URL("../../../ts/memorax-code-backend/node_modules/smol-toml", import.meta.url));
 const memoraxCodePluginId = "memorax-code-codex-adapter@memorax-code";
+
+function pathWithoutCommand(command, pathValue) {
+  return String(pathValue ?? "")
+    .split(delimiter)
+    .filter((root) => root && !commandOnPath(command, root, process.platform, process.env.PATHEXT))
+    .join(delimiter);
+}
 
 function codexHook(name, currentHash, overrides = {}) {
   return {
@@ -88,11 +96,13 @@ async function startMockMemorax({ status = 200, body = { success: true, data: { 
   };
 }
 
-async function runPostinstall({ existingCache = false, explicitCache = false, hookRuntimeFailure, failStartOnce = false, connectionAuthorityFailure = false, runtimeAuthorityFailureCode, officialMode = false, codexConfig, memoraxCodeConfig, memoraxCodeConfigMode, emptyClaudeSettings = false, claudeAvailable = true, claudeVersionFails = false, claudeSettingsText, codexAvailable = true, codexAppOnly = false, vscodeOnly = false, skipCodexPluginInstall = false, skipClaudeAdapterInstall = false, unavailableStatus = false, prefixedStatus = false, input = "", interactive = false, npmCommand = "install", memoraxVerify, memoraxEnv = {}, memoryStatusFixture, hookSnapshot = [], hookUpdatePlan = [], hookFullReview = false, hookFullReviewMissing = false, hookSnapshotFails = false, hookCheckFails = false, hookTrustFails = false, ttyOverride } = {}) {
+async function runPostinstall({ existingCache = false, explicitCache = false, hookRuntimeFailure, failStartOnce = false, connectionAuthorityFailure = false, runtimeAuthorityFailureCode, officialMode = false, codexConfig, memoraxCodeConfig, memoraxCodeConfigMode, emptyClaudeSettings = false, claudeAvailable = true, claudeVersionFails = false, claudeSettingsText, codexAvailable = true, codexAppOnly = false, vscodeOnly = false, opencodeAvailable = false, opencodeXdgAvailable = false, opencodeCliAvailable = false, skipCodexPluginInstall = false, skipClaudeAdapterInstall = false, skipOpenCodeAdapterInstall = false, unavailableStatus = false, prefixedStatus = false, input = "", interactive = false, npmCommand = "install", memoraxVerify, memoraxEnv = {}, memoryStatusFixture, hookSnapshot = [], hookUpdatePlan = [], hookFullReview = false, hookFullReviewMissing = false, hookSnapshotFails = false, hookCheckFails = false, hookTrustFails = false, ttyOverride } = {}) {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-postinstall-"));
   const binDir = join(root, "bin");
   const codexHome = join(root, "codex-home");
   const claudeHome = join(root, "claude-home");
+  const opencodeConfigDir = join(root, "opencode-config");
+  const xdgConfigHome = join(root, "xdg-config");
   const memoraxCodeHome = join(root, "memorax-code-home");
   const home = join(root, "home");
   const fakeBin = join(root, "fake-bin");
@@ -102,6 +112,7 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
   const memoraxServer = memoraxVerify ? await startMockMemorax(memoraxVerify) : undefined;
   await mkdir(binDir, { recursive: true });
   await mkdir(fakeBin, { recursive: true });
+  if (process.platform !== "win32") await symlink(process.execPath, join(fakeBin, "node"));
   await mkdir(libDir, { recursive: true });
   await mkdir(nodeModulesDir, { recursive: true });
   await copyFile(postinstallPath, join(binDir, "memorax-code-plugin-postinstall.mjs"));
@@ -259,8 +270,10 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     "if (process.argv[2] === 'stop') console.error('fake memorax-code stop output');",
     "const clientsIndex = process.argv.indexOf('--clients');",
     "const clientMode = clientsIndex >= 0 ? process.argv[clientsIndex + 1] : 'all';",
-    "const codexEnabled = clientMode === 'all' || clientMode === 'codex' || clientMode === 'codex,claude';",
-    "const claudeEnabled = clientMode === 'all' || clientMode === 'claude' || clientMode === 'codex,claude';",
+    "const selectedClients = new Set(clientMode === 'all' ? ['codex', 'claude', 'opencode'] : clientMode.split(','));",
+    "const codexEnabled = selectedClients.has('codex');",
+    "const claudeEnabled = selectedClients.has('claude');",
+    "const opencodeEnabled = selectedClients.has('opencode');",
     "if (process.argv[2] === 'status' && process.env.MEMORAX_CODE_TEST_UNAVAILABLE_STATUS === '1') {",
     "  console.error('memorax-code: ok');",
     "  console.error('backend: ok http://127.0.0.1:8787 status=200');",
@@ -274,12 +287,14 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     "    console.error('[MemoraX Code Backend]: Backend status: \\x1b[34m\\x1b[1mEnabled\\x1b[0m http://127.0.0.1:8787 status=200');",
     "    if (codexEnabled) console.error('[MemoraX Code Backend]: Codex adapter: \\x1b[32mok\\x1b[0m integration=hooks skills=plugin-managed');",
     "    if (claudeEnabled) console.error('[MemoraX Code Backend]: Claude adapter: \\x1b[32mok\\x1b[0m integration=hooks skills=ok');",
+    "    if (opencodeEnabled) console.error('[MemoraX Code Backend]: OpenCode adapter: \\x1b[32mok\\x1b[0m integration=plugin skills=ok');",
     "    process.exit(0);",
     "  }",
     "  console.error('memorax-code: ok');",
     "  console.error('backend: ok http://127.0.0.1:8787 status=200');",
     "  if (codexEnabled) console.error('codex adapter: ok integration=hooks skills=plugin-managed');",
     "  if (claudeEnabled) console.error('claude adapter: ok integration=hooks skills=ok');",
+    "  if (opencodeEnabled) console.error('opencode adapter: ok integration=plugin skills=ok');",
     "}",
     "process.exit(0);",
     "",
@@ -343,14 +358,10 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
         "",
       ].join("\n"), { mode: 0o755 });
       await chmod(appCodex, 0o755);
-      await symlink(process.execPath, join(fakeBin, "node"));
     }
   }
   if (vscodeOnly) {
     await writeMockVsCodeRuntimes({ home, logPath });
-    if (process.platform !== "win32") {
-      await symlink(process.execPath, join(fakeBin, "node"));
-    }
   }
   if (claudeAvailable) {
     await writeFile(join(fakeBin, "claude"), [
@@ -362,6 +373,11 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
       "",
     ].join("\n"), { mode: 0o755 });
     await chmod(join(fakeBin, "claude"), 0o755);
+  }
+  if (opencodeCliAvailable) {
+    const executable = join(fakeBin, process.platform === "win32" ? "opencode.cmd" : "opencode");
+    await writeFile(executable, "#!/usr/bin/env node\nprocess.exit(0);\n", { mode: 0o755 });
+    await chmod(executable, 0o755);
   }
   const cacheMarketplace = existingCache ? "personal" : explicitCache ? "memorax-code" : undefined;
   if (cacheMarketplace) {
@@ -386,6 +402,8 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     ? {}
     : { env: { ANTHROPIC_BASE_URL: "https://api.anthropic.com", ANTHROPIC_API_KEY: "test-key" } };
   await writeFile(join(claudeHome, "settings.json"), claudeSettingsText ?? `${JSON.stringify(claudeSettings, null, 2)}\n`);
+  if (opencodeAvailable) await mkdir(opencodeConfigDir, { recursive: true });
+  if (opencodeXdgAvailable) await mkdir(join(xdgConfigHome, "opencode"), { recursive: true });
 
   let activeHookRuntimeBefore;
   if (hookRuntimeFailure) {
@@ -440,13 +458,18 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     CODEX_HOME: codexHome,
     HOME: home,
     CLAUDE_CONFIG_DIR: claudeHome,
+    OPENCODE_CONFIG_DIR: opencodeAvailable ? opencodeConfigDir : "",
+    XDG_CONFIG_HOME: opencodeXdgAvailable ? xdgConfigHome : "",
     MEMORAX_CODE_HOME: memoraxCodeHome,
-    PATH: codexAppOnly || vscodeOnly ? fakeBin : `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
+    PATH: codexAppOnly || vscodeOnly
+      ? fakeBin
+      : `${fakeBin}${delimiter}${pathWithoutCommand("opencode", process.env.PATH)}`,
     npm_command: npmCommand,
     MEMORAX_CODE_NPM_POSTINSTALL_VERBOSE: "1",
     MEMORAX_CODE_NPM_POSTINSTALL_ASSUME_INTERACTIVE: interactive ? "1" : "0",
     MEMORAX_CODE_SKIP_CODEX_PLUGIN_INSTALL: skipCodexPluginInstall ? "1" : "0",
     MEMORAX_CODE_SKIP_CLAUDE_ADAPTER_INSTALL: skipClaudeAdapterInstall ? "1" : "0",
+    MEMORAX_CODE_SKIP_OPENCODE_ADAPTER_INSTALL: skipOpenCodeAdapterInstall ? "1" : "0",
     MEMORAX_CODE_TEST_FAIL_START_ONCE: failStartOnce ? "1" : "0",
     MEMORAX_CODE_TEST_RUNTIME_AUTHORITY_FAILURE: runtimeAuthorityFailureCode
       ?? (connectionAuthorityFailure ? "BACKEND_CONNECTION_AUTHORITY_INVALID" : ""),
@@ -498,6 +521,7 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     memoraxCodeHome,
     codexHome,
     claudeHome,
+    opencodeConfigDir,
     memoraxEndpoint: memoraxServer?.url,
     memoraxRequests: memoraxServer?.requests ?? [],
     activeHookRuntimeBefore,
@@ -573,8 +597,8 @@ test("postinstall updates an installed Codex plugin without remove/add", async (
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
     assert.equal((run.log.match(/^memorax-code codex-plugin install --json$/gm) ?? []).length, 1);
     assert.doesNotMatch(run.log, /^codex plugin (?:remove|add) /m);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     assert.match(run.result.stderr, /\[MemoraX Code Install\]: Checking local install state/);
     assert.match(run.result.stderr, /\[MemoraX Code Install\]: MemoraX Code backend package: memorax-code 0\.1\.1-test/);
     assert.match(run.result.stderr, /\[MemoraX Code Install\]: Existing Codex plugin cache: found \(0\.1\.0\)/);
@@ -658,8 +682,8 @@ test("postinstall generation activation failure preserves the active runtime", a
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.doesNotMatch(run.log, /^memorax-code (?:stop|status) --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.doesNotMatch(run.log, /^memorax-code (?:stop|status) --clients codex,claude$/m);
     assert.match(run.result.stderr, /Client Hook runtime activation failed:/);
     assert.match(run.result.stderr, /previously active runtime remains authoritative/);
     assert.match(run.result.stderr, /Backend and selected adapters: .*Not verified/);
@@ -1006,10 +1030,10 @@ test("postinstall update defaults to enabling a detected Codex runtime on Enter"
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
     assert.match(run.result.stderr, /Activate and trust MemoraX Code Codex Adapter hooks now\? \[Y\/n\]/);
     assert.match(run.log, /^memorax-code codex-plugin activate --yes$/m);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\]\ncodex = true\nclaude = true/);
+    assert.match(config, /\[clients\]\nopencode = false\ncodex = true\nclaude = true/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1034,7 +1058,7 @@ test("postinstall update keeps a detected disabled client unchanged when non-int
     assert.match(run.log, /^memorax-code start --clients claude$/m);
     assert.match(run.log, /^memorax-code status --clients claude$/m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\]\ncodex = false\nclaude = true/);
+    assert.match(config, /\[clients\]\nopencode = false\ncodex = false\nclaude = true/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1062,7 +1086,7 @@ test("postinstall update lets each detected disabled client be selected independ
     assert.match(run.log, /^memorax-code start --clients claude$/m);
     assert.match(run.log, /^memorax-code status --clients claude$/m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\]\ncodex = false\nclaude = true/);
+    assert.match(config, /\[clients\]\nopencode = false\ncodex = false\nclaude = true/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1082,7 +1106,50 @@ test("postinstall fresh install auto-detects Codex and skips an unavailable Clau
     assert.match(run.log, /^memorax-code status --clients codex$/m);
     assert.match(run.result.stderr, /Backend and selected adapters: .*Enabled/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = true[^\r\n]*\r?\nclaude = false/m);
+    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = true[^\r\n]*\r?\nclaude = false[^\r\n]*\r?\nopencode = false/m);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall detects OpenCode Desktop from its XDG config directory", async () => {
+  const run = await runPostinstall({ opencodeXdgAvailable: true });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /OpenCode configuration: found/);
+    assert.match(run.result.stderr, /OpenCode CLI: not detected/);
+    assert.match(run.log, /^memorax-code start --clients all$/m);
+    assert.match(run.log, /^memorax-code status --clients all$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(tomlSectionText(config, "clients"), /^opencode = true(?:\s+#.*)?$/m);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall detects OpenCode CLI without an existing config directory", async () => {
+  const run = await runPostinstall({ opencodeCliAvailable: true });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /OpenCode configuration: not detected/);
+    assert.match(run.result.stderr, /OpenCode CLI: found in PATH/);
+    assert.match(run.log, /^memorax-code start --clients all$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(tomlSectionText(config, "clients"), /^opencode = true(?:\s+#.*)?$/m);
+  } finally {
+    await rm(run.root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall detects OpenCode when Desktop configuration and CLI are both available", async () => {
+  const run = await runPostinstall({ opencodeXdgAvailable: true, opencodeCliAvailable: true });
+  try {
+    assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /OpenCode configuration: found/);
+    assert.match(run.result.stderr, /OpenCode CLI: found in PATH/);
+    assert.match(run.log, /^memorax-code start --clients all$/m);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.match(tomlSectionText(config, "clients"), /^opencode = true(?:\s+#.*)?$/m);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1102,10 +1169,10 @@ test("postinstall reinstall re-detects a newly available Claude runtime", async 
     assert.match(run.log, /^codex --version$/m);
     assert.match(run.log, /^claude --version$/m);
     assert.match(run.result.stderr, /Detected supported client runtimes\. Configuring MemoraX Code for Codex and Claude Code\./);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\]\ncodex = true\nclaude = true/);
+    assert.match(config, /\[clients\]\nopencode = false\ncodex = true\nclaude = true/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1138,7 +1205,7 @@ test("postinstall update re-detects a legacy empty client selection", async () =
     assert.match(run.log, /^memorax-code start --clients codex$/m);
     assert.match(run.log, /^memorax-code status --clients codex$/m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\]\ncodex = true\nclaude = false/);
+    assert.match(config, /\[clients\]\nopencode = false\ncodex = true\nclaude = false/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1162,7 +1229,7 @@ test("postinstall update preserves client intent while skipping an uninstalled C
     assert.match(run.log, /^memorax-code status --clients codex$/m);
     assert.doesNotMatch(run.result.stderr, /Backend and selected adapters: Not verified/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\]\ncodex = true\nclaude = true/);
+    assert.match(config, /\[clients\]\nopencode = false\ncodex = true\nclaude = true/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1172,7 +1239,7 @@ test("postinstall recognizes prefixed human-readable memorax-code status output"
   const run = await runPostinstall({ prefixedStatus: true });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     assert.match(run.result.stderr, /\[MemoraX Code Backend\]: Codex adapter: .*ok.* integration=hooks skills=plugin-managed/);
     assert.match(run.result.stderr, /Backend and selected adapters: .*Enabled/);
     assert.doesNotMatch(run.result.stderr, /\[MemoraX Code Backend\]: Backend and selected adapters:/);
@@ -1223,7 +1290,7 @@ test("postinstall skip for Codex plugin still starts backend for Claude Code", a
     assert.doesNotMatch(run.result.stderr, /enable the MemoraX Code Codex Adapter plugin/);
     assert.doesNotMatch(run.log, /^codex /m);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = false[^\r\n]*\r?\nclaude = true/m);
+    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = false[^\r\n]*\r?\nclaude = true[^\r\n]*\r?\nopencode = false/m);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1236,8 +1303,8 @@ test("postinstall uses the same Claude Hook lifecycle without explicit provider 
     assert.doesNotMatch(run.result.stderr, /Claude Code login mode:|official login|provider\/API key mode/);
     assert.match(run.result.stderr, /Keeping Claude Code provider config unchanged and enabling the shared memory Hook integration/);
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     assert.match(run.result.stderr, /\[MemoraX Code Backend\]: codex adapter: ok integration=hooks skills=plugin-managed/);
     assert.match(run.result.stderr, /\[MemoraX Code Backend\]: claude adapter: ok integration=hooks skills=ok/);
     assert.match(run.result.stderr, /Backend and selected adapters: .*Enabled/);
@@ -1263,7 +1330,7 @@ test("postinstall env can explicitly skip Claude Code adapter setup", async () =
     assert.match(run.result.stderr, /Restart or refresh Codex/);
     assert.match(run.result.stderr, /run `memorax-code status` and `memorax-code-codex status`/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = true[^\r\n]*\r?\nclaude = false/m);
+    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = true[^\r\n]*\r?\nclaude = false[^\r\n]*\r?\nopencode = false/m);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1351,8 +1418,8 @@ test("postinstall does not auto-install Codex plugin when no cache exists yet", 
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
     assert.doesNotMatch(run.log, /^codex plugin remove memorax-code-codex-adapter@personal$/m);
     assert.doesNotMatch(run.log, /^codex plugin add memorax-code-codex-adapter@personal$/m);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     assert.match(run.result.stderr, /\[MemoraX Code Install\]: Existing Codex plugin cache: not installed/i);
     assert.match(run.result.stderr, /Restart or refresh Codex or Claude Code/i);
     assert.match(run.result.stderr, /--foreground-scripts/i);
@@ -1403,8 +1470,8 @@ test("postinstall accepts VS Code bundled runtimes when no standalone CLI is ins
     assert.match(run.result.stderr, /Claude VS Code runtime: /);
     assert.doesNotMatch(run.result.stderr, /setup was selected but no .* runtime is runnable/);
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     if (process.platform !== "win32") {
       assert.match(run.log, /^vscode-claude --version$/m);
       if (/Codex VS Code runtime: /.test(run.result.stderr)) {
@@ -1515,7 +1582,7 @@ test("postinstall can configure only Codex", async () => {
     assert.doesNotMatch(run.log, /^claude /m);
     assert.equal(await readFile(join(run.claudeHome, "settings.json"), "utf8"), claudeSettingsText);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = true[^\r\n]*\r?\nclaude = false/m);
+    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = true[^\r\n]*\r?\nclaude = false[^\r\n]*\r?\nopencode = false/m);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1544,7 +1611,7 @@ test("postinstall can write MemoraX memory config before backend start", async (
     assert.match(run.result.stderr, /first workspace-scoped memory request from a trusted workspace/);
     assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
     assert.match(run.result.stderr, /Automatic writeback: .*Enabled/);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
     assert.match(run.log, /^memorax-cli status --json --config-only$/m);
     assert.equal(run.memoraxRequests.length, 0);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
@@ -1899,7 +1966,7 @@ test("postinstall starts only the common Backend when no supported client is det
     assert.match(run.result.stderr, /Backend and selected adapters: .*Enabled/);
     assert.doesNotMatch(run.result.stderr, /Restart or refresh Codex/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = false[^\r\n]*\r?\nclaude = false/m);
+    assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = false[^\r\n]*\r?\nclaude = false[^\r\n]*\r?\nopencode = false/m);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1909,10 +1976,10 @@ test("postinstall recovers from a failed backend start and prints red diagnostic
   const run = await runPostinstall({ failStartOnce: true });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code stop --clients all$/m);
-    assert.match(run.log, /^memorax-code start --clients all$/m);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code stop --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code start --clients codex,claude$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     assert.match(run.result.stderr, /Backend start failed during npm postinstall/);
     assert.match(run.result.stderr, /\[MemoraX Code Backend\]: fake memorax-code start failure/);
     assert.match(run.result.stderr, /Attempting automatic recovery: `memorax-code stop` then `memorax-code start`/);
@@ -1928,7 +1995,7 @@ test("postinstall does not stop adapters after a deterministic connection author
   const run = await runPostinstall({ connectionAuthorityFailure: true });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.equal((run.log.match(/^memorax-code start --clients all$/gm) ?? []).length, 1);
+    assert.equal((run.log.match(/^memorax-code start --clients codex,claude$/gm) ?? []).length, 1);
     assert.doesNotMatch(run.log, /^memorax-code stop(?: |$)/m);
     assert.doesNotMatch(run.log, /^memorax-code status(?: |$)/m);
     assert.match(run.result.stderr, /BACKEND_CONNECTION_AUTHORITY_INVALID/);
@@ -1956,7 +2023,7 @@ test("postinstall does not retry deterministic token or service-state failures",
       const run = await runPostinstall({ runtimeAuthorityFailureCode: code });
       try {
         assert.equal(run.result.code, 0, run.result.stderr);
-        assert.equal((run.log.match(/^memorax-code start --clients all$/gm) ?? []).length, 1);
+        assert.equal((run.log.match(/^memorax-code start --clients codex,claude$/gm) ?? []).length, 1);
         assert.doesNotMatch(run.log, /^memorax-code stop(?: |$)/m);
         assert.doesNotMatch(run.log, /^memorax-code status(?: |$)/m);
         assert.match(run.result.stderr, new RegExp(code));
@@ -1974,7 +2041,7 @@ test("postinstall does not stop a Backend after lifecycle lock contention", asyn
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.equal((run.log.match(/^memorax-code start --clients all$/gm) ?? []).length, 1);
+    assert.equal((run.log.match(/^memorax-code start --clients codex,claude$/gm) ?? []).length, 1);
     assert.doesNotMatch(run.log, /^memorax-code stop(?: |$)/m);
     assert.doesNotMatch(run.log, /^memorax-code status(?: |$)/m);
     assert.match(run.result.stderr, /BACKEND_LIFECYCLE_LOCK_TIMEOUT/);
@@ -1992,7 +2059,7 @@ test("postinstall reports unavailable status and prints red diagnostics instead 
   const run = await runPostinstall({ unavailableStatus: true });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.log, /^memorax-code status --clients all$/m);
+    assert.match(run.log, /^memorax-code status --clients codex,claude$/m);
     assert.match(run.result.stderr, /\[MemoraX Code Backend\]: codex adapter: not enabled integration=hooks/);
     assert.match(run.result.stderr, /\[MemoraX Code Backend\]: claude adapter: ok integration=hooks skills=ok/);
     assert.match(run.result.stderr, /Backend and selected adapters: .*Unavailable/);

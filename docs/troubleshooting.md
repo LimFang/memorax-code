@@ -10,9 +10,10 @@ memorax-code-claude doctor
 memorax-code logs
 ```
 
-`status` checks the Backend and client integrations. `memory status` checks
-credentials, scope, and memory switches without printing secrets. Each client
-`doctor` checks its plugin, skill, workspace, and Backend connection.
+`memorax-code status` checks the Backend and selected client integrations,
+including OpenCode. `memorax-cli status` checks credentials, scope, and memory
+switches without printing secrets. Codex and Claude Code additionally provide
+client-specific `doctor` commands.
 
 ## Installed, but memory is unavailable
 
@@ -102,6 +103,18 @@ memorax-code-claude doctor
 This reconciles the Claude Code marketplace plugin and Hooks. If the plugin is
 still missing or stale, restart or refresh Claude Code. Do not manually copy
 Hooks into Claude settings.
+
+## OpenCode plugin or skill is inactive
+
+```sh
+memorax-code start --clients opencode
+memorax-code status --clients opencode
+```
+
+Rerun the start command to reconcile the managed plugin and skill, then restart
+or refresh OpenCode. The configuration root follows `OPENCODE_CONFIG_DIR`, then
+`XDG_CONFIG_HOME`, and otherwise defaults to `~/.config/opencode`. MemoraX Code
+does not add plugin entries to `opencode.json` or `opencode.jsonc`.
 
 An already-open client may keep its loaded plugin shell while a later prompt
 uses the updated Hook runtime. Restart or refresh the client to load a changed
