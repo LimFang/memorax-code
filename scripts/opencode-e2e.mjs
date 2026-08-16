@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { resolveNpmInvocation } from "../packages/npm/memorax-code/lib/npm-invocation.mjs";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -86,7 +87,7 @@ try {
   modelStub = await startModelStub(REPLY);
   env.MEMORAX_CODE_MEMORAX_ENDPOINT = memoryStub.url;
 
-  await run("npm", ["run", "build", "--prefix", "packages/ts/memorax-code-backend"], {
+  await runNpm(["run", "build", "--prefix", "packages/ts/memorax-code-backend"], {
     cwd: repoRoot,
     env,
   });
@@ -96,13 +97,13 @@ try {
   ], { cwd: repoRoot, env });
   const tarballDir = join(root, "tarballs");
   await mkdir(tarballDir, { recursive: true });
-  const { stdout: packJson } = await run("npm", [
+  const { stdout: packJson } = await runNpm([
     "pack", join(stagingRoot, "memorax-code"),
     "--pack-destination", tarballDir,
     "--json",
   ], { cwd: repoRoot, env });
   const tarball = join(tarballDir, JSON.parse(packJson)[0].filename);
-  await run("npm", [
+  await runNpm([
     "install", "--prefix", prefix,
     tarball,
     `opencode-ai@${OPENCODE_VERSION}`,
@@ -113,12 +114,16 @@ try {
 
   const binDir = join(prefix, "node_modules", ".bin");
   env.PATH = `${binDir}${delimiter}${env.PATH ?? ""}`;
-  memoraxCode = join(binDir, process.platform === "win32" ? "memorax-code.cmd" : "memorax-code");
-  const memoraxOpenCode = join(binDir, process.platform === "win32" ? "memorax-code-opencode.cmd" : "memorax-code-opencode");
-  const opencode = join(binDir, process.platform === "win32" ? "opencode.cmd" : "opencode");
+  const installedPackageRoot = join(prefix, "node_modules", "@memorax", "memorax-code");
+  memoraxCode = installedMemoraxCli(binDir, installedPackageRoot, "memorax-code");
+  const memoraxOpenCode = installedMemoraxCli(binDir, installedPackageRoot, "memorax-code-opencode");
+  const opencode = process.platform === "win32"
+    ? join(prefix, "node_modules", "opencode-ai", "bin", "opencode.exe")
+    : join(binDir, "opencode");
   await assertManagedArtifacts(openCodeConfigDir);
 
-  const startReport = await runJson(memoraxCode, [
+  const startReport = await runJson(memoraxCode.command, [
+    ...memoraxCode.args,
     "start", "--json",
     "--home", memoraxCodeHome,
     "--opencode-config-dir", openCodeConfigDir,
@@ -203,7 +208,8 @@ try {
   assert.ok(promptModelRequest, "OpenCode did not send the user prompt to the model");
   assert.match(JSON.stringify(promptModelRequest.body), /E2E recalled memory/);
 
-  const doctor = await runJson(memoraxOpenCode, [
+  const doctor = await runJson(memoraxOpenCode.command, [
+    ...memoraxOpenCode.args,
     "doctor", "--json",
     "--memorax-code-home", memoraxCodeHome,
     "--opencode-config-dir", openCodeConfigDir,
@@ -218,12 +224,29 @@ try {
   });
   assert.equal(connection.source, "authority");
   assert.equal(connection.tokenSource, "authority-file");
-  const viewerResponse = await fetch(
-    `${connection.url}/memory-viewer/api/summary?client=opencode`,
-    { headers: { "x-memorax-code-backend-token": connection.token } },
+  const tracePath = join(
+    memoraxCodeHome,
+    "debug", "traces", "opencode", "sessions", sessionId, "events.jsonl",
   );
-  assert.equal(viewerResponse.status, 200);
-  const viewer = await viewerResponse.json();
+  await waitFor(async () => (
+    await readFile(tracePath, "utf8").catch(() => "")
+  ).includes('"type":"memory_writeback"'));
+  const viewer = await waitFor(async () => {
+    const response = await fetch(
+      `${connection.url}/memory-viewer/api/summary?client=opencode`,
+      { headers: { "x-memorax-code-backend-token": connection.token } },
+    );
+    if (response.status !== 200) return undefined;
+    const candidate = await response.json();
+    const summary = candidate.summary;
+    if (
+      summary?.turnCount !== 1
+      || summary.searchOperationCount !== 1
+      || summary.searchedMemoryCount !== 1
+      || summary.addOperationCount !== 1
+    ) return undefined;
+    return candidate;
+  });
   assert.equal(viewer.ok, true);
   assert.equal(viewer.selectedClient, "opencode");
   assert.deepEqual({
@@ -245,10 +268,7 @@ try {
     assert.equal(viewerJson.includes(`"${field}"`), false);
   }
 
-  const traceEvents = (await readFile(join(
-    memoraxCodeHome,
-    "debug", "traces", "opencode", "sessions", sessionId, "events.jsonl",
-  ), "utf8")).trim().split(/\r?\n/).map(JSON.parse);
+  const traceEvents = (await readFile(tracePath, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
   const traceTypes = new Set(traceEvents.map((event) => event.type));
   for (const type of ["turn_start", "turn_end", "memory_retrieve", "memory_writeback"]) {
     assert.equal(traceTypes.has(type), true);
@@ -256,7 +276,8 @@ try {
 
   await openCode.close();
   openCode = undefined;
-  const uninstall = await runJson(memoraxCode, [
+  const uninstall = await runJson(memoraxCode.command, [
+    ...memoraxCode.args,
     "uninstall", "--json",
     "--home", memoraxCodeHome,
     "--opencode-config-dir", openCodeConfigDir,
@@ -280,7 +301,8 @@ try {
 } finally {
   await openCode?.close().catch(() => undefined);
   if (memoraxCode) {
-    await run(memoraxCode, [
+    await run(memoraxCode.command, [
+      ...memoraxCode.args,
       "stop", "--json",
       "--home", memoraxCodeHome,
       "--clients", "none",
@@ -367,6 +389,7 @@ async function startOpenCode(command, cwd, childEnv, config) {
     env: { ...childEnv, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const childExit = new Promise((resolveExit) => child.once("exit", resolveExit));
   let output = "";
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
@@ -375,29 +398,37 @@ async function startOpenCode(command, cwd, childEnv, config) {
   const url = `http://127.0.0.1:${port}`;
   try {
     await waitFor(async () => {
-      if (child.exitCode !== null) throw new Error(`OpenCode exited early:\n${output}`);
+      if (childStopped(child)) throw new Error(`OpenCode exited early:\n${output}`);
       return await fetch(`${url}/global/health`).then((response) => response.ok).catch(() => false);
     }, 20_000);
   } catch (error) {
-    await terminateChild(child);
+    await terminateChild(child, childExit);
     throw error;
   }
   return {
     url,
-    close: () => terminateChild(child),
+    close: () => terminateChild(child, childExit),
   };
 }
 
-async function terminateChild(child) {
-  if (child.exitCode !== null) return;
+async function terminateChild(child, childExit) {
+  if (childStopped(child)) return;
   child.kill("SIGTERM");
+  let stopTimer;
   const stopped = await Promise.race([
-    new Promise((resolveExit) => child.once("exit", () => resolveExit(true))),
-    new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(false), 5_000)),
+    childExit.then(() => true),
+    new Promise((resolveTimeout) => {
+      stopTimer = setTimeout(() => resolveTimeout(false), 5_000);
+    }),
   ]);
-  if (stopped || child.exitCode !== null) return;
+  clearTimeout(stopTimer);
+  if (stopped || childStopped(child)) return;
   child.kill("SIGKILL");
-  await new Promise((resolveExit) => child.once("exit", resolveExit));
+  await childExit;
+}
+
+function childStopped(child) {
+  return child.exitCode !== null || child.signalCode !== null;
 }
 
 async function listen(server, requests, suffix = "") {
@@ -436,6 +467,24 @@ function json(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
+function installedMemoraxCli(binDir, packageRoot, name) {
+  if (process.platform !== "win32") {
+    return { command: join(binDir, name), args: [] };
+  }
+  return {
+    command: process.execPath,
+    args: [join(packageRoot, "bin", `${name}.mjs`)],
+  };
+}
+
+function runNpm(args, options) {
+  const invocation = resolveNpmInvocation(args, {
+    env: options.env,
+    nodePath: process.execPath,
+  });
+  return run(invocation.command, invocation.args, options);
+}
+
 async function run(command, args, options) {
   try {
     return await execFileAsync(command, args, {
@@ -457,7 +506,8 @@ async function runJson(command, args, options) {
 async function waitFor(predicate, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    if (await predicate()) return;
+    const result = await predicate();
+    if (result) return result;
     if (Date.now() >= deadline) throw new Error("timed out waiting for E2E condition");
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
   }
