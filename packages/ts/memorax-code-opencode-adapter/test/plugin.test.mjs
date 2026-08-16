@@ -206,7 +206,16 @@ test("the managed Repo Memory agent is registered and isolated from prompt handl
     },
   });
   const hooks = await plugin(pluginInput());
-  const config = { agent: { existing: { description: "Keep me." } } };
+  const config = {
+    agent: {
+      existing: { description: "Keep me." },
+      [OPENCODE_REPO_MEMORY_AGENT]: {
+        description: "User-configured Repo Memory agent.",
+        disable: true,
+        permission: { bash: "deny" },
+      },
+    },
+  };
 
   await hooks.config(config);
   const output = promptOutput("repo-memory-user", "Maintain Repo Memory");
@@ -217,15 +226,11 @@ test("the managed Repo Memory agent is registered and isolated from prompt handl
 
   assert.deepEqual(config.agent.existing, { description: "Keep me." });
   assert.deepEqual(config.agent[OPENCODE_REPO_MEMORY_AGENT], {
-    description: "Managed MemoraX Code Repo Memory maintenance agent.",
+    description: "User-configured Repo Memory agent.",
     mode: "subagent",
-    permission: {
-      edit: "allow",
-      bash: "allow",
-      webfetch: "allow",
-      doom_loop: "allow",
-      external_directory: "allow",
-    },
+    hidden: true,
+    disable: true,
+    permission: { bash: "deny" },
   });
   assert.equal(reminderCalls, 0);
   assert.equal(requests.length, 0);

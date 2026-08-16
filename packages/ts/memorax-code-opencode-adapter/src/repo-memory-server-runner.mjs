@@ -35,6 +35,13 @@ export async function runOpenCodeRepoMemory(input, options = {}) {
       body: JSON.stringify({
         ...(parentID ? { parentID } : {}),
         title: "MemoraX Code Repo Memory",
+        permission: [
+          { permission: "edit", pattern: "*", action: "allow" },
+          { permission: "bash", pattern: "*", action: "allow" },
+          { permission: "webfetch", pattern: "*", action: "allow" },
+          { permission: "doom_loop", pattern: "*", action: "allow" },
+          { permission: "external_directory", pattern: "*", action: "allow" },
+        ],
       }),
     }, "session creation");
     sessionID = stringValue(session?.id);

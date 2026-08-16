@@ -128,16 +128,12 @@ export function createMemoraxOpenCodePlugin(options = {}) {
       config: async (config) => {
         if (!pluginEnabled(options)) return;
         config.agent ??= {};
+        const configuredAgent = config.agent[OPENCODE_REPO_MEMORY_AGENT];
         config.agent[OPENCODE_REPO_MEMORY_AGENT] = {
           description: "Managed MemoraX Code Repo Memory maintenance agent.",
           mode: "subagent",
-          permission: {
-            edit: "allow",
-            bash: "allow",
-            webfetch: "allow",
-            doom_loop: "allow",
-            external_directory: "allow",
-          },
+          hidden: true,
+          ...(configuredAgent && typeof configuredAgent === "object" ? configuredAgent : {}),
         };
       },
       "chat.message": async (input, output) => {

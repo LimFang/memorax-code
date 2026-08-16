@@ -67,6 +67,13 @@ test("OpenCode repo memory runner creates, prompts, and deletes a background ses
     assert.deepEqual(JSON.parse(requests[0].body), {
       parentID: "parent-session",
       title: "MemoraX Code Repo Memory",
+      permission: [
+        { permission: "edit", pattern: "*", action: "allow" },
+        { permission: "bash", pattern: "*", action: "allow" },
+        { permission: "webfetch", pattern: "*", action: "allow" },
+        { permission: "doom_loop", pattern: "*", action: "allow" },
+        { permission: "external_directory", pattern: "*", action: "allow" },
+      ],
     });
     assert.deepEqual(JSON.parse(requests[1].body), {
       agent: OPENCODE_REPO_MEMORY_AGENT,
