@@ -17,13 +17,15 @@ test.beforeEach(() => clearMemoryViewerEvents());
 test("memory viewer user route renders the compact summary surface", async () => {
   const { url, close } = await viewerServer();
   try {
-    const response = await fetch(`${url}/memory-viewer?token=viewer-token`);
+    const response = await fetch(`${url}/memory-viewer?client=opencode&token=viewer-token`);
     const html = await response.text();
     assert.equal(response.status, 200);
     assert.match(html, /<html lang="en" data-theme="light">/);
     assert.match(html, /Memory at a glance/);
-    assert.match(html, /data-client="codex"/);
-    assert.match(html, /data-client="claude-code"/);
+    assert.match(html, /id="client-select"/);
+    assert.match(html, /<option value="codex">Codex<\/option>/);
+    assert.match(html, /<option value="claude-code">Claude Code<\/option>/);
+    assert.match(html, /<option value="opencode">OpenCode<\/option>/);
     assert.match(html, /id="language-toggle"/);
     assert.match(html, /id="theme-toggle"/);
     assert.match(html, /LANGUAGE_STORAGE_KEY,\['zh','en'\],'en'/);
@@ -40,7 +42,9 @@ test("memory viewer user route renders the compact summary surface", async () =>
     assert.match(html, /preparing:'生成中'/);
     assert.match(html, /bundle_missing:'Generating repository knowledge'/);
     assert.match(html, /bundle_missing:'正在生成仓库知识'/);
-    assert.match(html, /displayStatus=state\.reason==='bundle_missing'\?'preparing':state\.status/);
+    assert.match(html, /bundle_missing_idle:'Repository knowledge has not been initialized'/);
+    assert.match(html, /bundle_missing_idle:'仓库知识尚未初始化'/);
+    assert.match(html, /idleOpenCodeBundle=client==='opencode'&&state\.reason==='bundle_missing'/);
     assert.match(html, /className='state-dot '\+displayStatus/);
     assert.match(html, /current\.repoStates\[displayStatus\]/);
     assert.ok(Buffer.byteLength(html) < 64 * 1024);
@@ -103,6 +107,14 @@ test("memory viewer user API isolates clients and never returns private event co
     request: { payload: { query: "claude private query" } },
     response: { items: [{ memory: "claude private one" }, { memory: "claude private two" }] },
   });
+  recordMemoryViewerEvent({
+    source: "memory_cli",
+    operation: "query",
+    ok: true,
+    traceContext: { client: "opencode", sessionId: "opencode-session", cwd: repo },
+    request: { payload: { query: "opencode private query" } },
+    response: { items: [{ memory: "opencode private memory" }] },
+  });
 
   const { url, close } = await viewerServer(memoraxCodeHome, {
     repoMemoryReadiness: async () => ({ status: "not_ready", reason: "bundle_missing" }),
@@ -114,7 +126,7 @@ test("memory viewer user API isolates clients and never returns private event co
     const codexText = await codexResponse.text();
     const codex = JSON.parse(codexText);
     assert.equal(codex.selectedClient, "codex");
-    assert.deepEqual(codex.availableClients, ["codex", "claude-code"]);
+    assert.deepEqual(codex.availableClients, ["codex", "claude-code", "opencode"]);
     assert.equal(codex.summary.searchOperationCount, 1);
     assert.equal(codex.summary.searchedMemoryCount, 1);
     assert.equal(codex.activities.length, 1);
@@ -125,7 +137,7 @@ test("memory viewer user API isolates clients and never returns private event co
     assert.equal(codex.projects.every((project) => (
       project.repoMemory.status === "not_ready" && project.repoMemory.reason === "bundle_missing"
     )), true);
-    assert.doesNotMatch(codexText, /codex private|other private|claude private/i);
+    assert.doesNotMatch(codexText, /codex private|other private|claude private|opencode private/i);
     for (const field of ["prompt", "answer", "query", "results", "details", "sessionId", "turnId"]) {
       assert.equal(codexText.includes(`"${field}"`), false);
     }
@@ -136,6 +148,14 @@ test("memory viewer user API isolates clients and never returns private event co
     assert.equal(claude.selectedClient, "claude-code");
     assert.equal(claude.summary.searchOperationCount, 1);
     assert.equal(claude.summary.searchedMemoryCount, 2);
+
+    const opencode = await (await fetch(
+      `${url}/memory-viewer/api/summary?client=opencode`,
+    )).json();
+    assert.equal(opencode.selectedClient, "opencode");
+    assert.equal(opencode.summary.searchOperationCount, 1);
+    assert.equal(opencode.summary.searchedMemoryCount, 1);
+    assert.doesNotMatch(JSON.stringify(opencode), /opencode private/i);
   } finally {
     await close();
     await rm(memoraxCodeHome, { recursive: true, force: true });
