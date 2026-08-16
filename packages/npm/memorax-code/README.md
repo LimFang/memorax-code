@@ -1,11 +1,11 @@
 # @memorax/memorax-code
 
-MemoraX Code adds persistent coding memory to Codex and Claude Code.
+MemoraX Code adds persistent coding memory to Codex, Claude Code, and OpenCode.
 
 ## Requirements
 
 - Node.js 24 or newer and npm.
-- Codex or Claude Code.
+- At least one of Codex, Claude Code, OpenCode Desktop, or the OpenCode CLI.
 - A MemoraX account, Base User ID, and API key for memory features.
 - Python 3 only for Repo Memory operations.
 
@@ -20,10 +20,10 @@ npm install -g @memorax/memorax-code --foreground-scripts
 
 Keep `--foreground-scripts` so npm displays the complete setup.
 
-The installer automatically detects the Codex and Claude Code clients available
-on the machine and configures each client it finds. Follow the prompts to enter
-your MemoraX Base User ID, preferred language, and API key. When Codex is
-detected, review and approve its Hook activation.
+The installer automatically detects available Codex, Claude Code, and OpenCode
+clients and configures each client it finds. Follow the prompts to enter your
+MemoraX Base User ID, preferred language, and API key. When Codex is detected,
+review and approve its Hook activation.
 
 Entering the MemoraX credentials after the installer's disclosure enables the
 core memory features and automatic writeback. If setup is skipped or cannot
