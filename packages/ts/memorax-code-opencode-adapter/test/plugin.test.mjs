@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -37,6 +37,74 @@ test("chat.message retrieves memory and injects it into the system prompt", asyn
     cwd: "/repo/worktree",
     workspaceKind: "project",
   });
+});
+
+test("managed plugin starts the Backend once and bounds prompt waiting", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-opencode-backend-start-"));
+  const nodePath = process.execPath;
+  const memoraxCodeHome = join(root, "memorax-code-home");
+  const openCodeConfigDir = join(root, "opencode-config");
+  const statePath = join(root, "state.json");
+  const callsPath = join(root, "lifecycle-calls.jsonl");
+  const releasePath = join(root, "lifecycle-release");
+  const memoraxCodeCommand = join(root, "memorax-code.mjs");
+  const requests = [];
+  let hooks;
+  try {
+    await writeFile(statePath, JSON.stringify({
+      version: 1,
+      runtime: "opencode",
+      integration: "plugin",
+      enabled: true,
+    }));
+    await writeFile(memoraxCodeCommand, [
+      'import { appendFileSync, existsSync } from "node:fs";',
+      `appendFileSync(${JSON.stringify(callsPath)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+      `while (!existsSync(${JSON.stringify(releasePath)})) await new Promise((resolve) => setTimeout(resolve, 5));`,
+    ].join("\n"));
+    const plugin = createMemoraxOpenCodePlugin({
+      statePath,
+      memoraxCodeHome,
+      openCodeConfigDir,
+      memoraxCodeCommand,
+      nodePath,
+      backendConnection: { url: "http://127.0.0.1:9", source: "option" },
+      healthTimeoutValue: "50",
+      startTimeoutValue: "1000",
+      backendPromptWaitTimeoutValue: "100",
+      fetchImpl: responseSequence(requests, [{ ok: true }]),
+    });
+    process.execPath = join(root, "opencode");
+    hooks = await plugin(pluginInput());
+    await waitForFile(callsPath);
+    const calls = (await readFile(callsPath, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.deepEqual(calls, [[
+      "start",
+      "--home", memoraxCodeHome,
+      "--opencode-config-dir", openCodeConfigDir,
+      "--host", "127.0.0.1",
+      "--port", "9",
+    ]]);
+    const prompt = (id) => hooks["chat.message"](
+      { sessionID: `session-${id}` },
+      { message: { id }, parts: [{ type: "text", text: id }] },
+    );
+    await Promise.race([
+      Promise.all([prompt("user-start-1"), prompt("user-start-2")]),
+      delay(400).then(() => { throw new Error("Backend prompt wait was not bounded"); }),
+    ]);
+    assert.equal(requests.length, 0);
+
+    await writeFile(releasePath, "release\n");
+    await hooks.dispose();
+    await prompt("user-start-3");
+    assert.equal(requests.length, 1);
+  } finally {
+    process.execPath = nodePath;
+    await writeFile(releasePath, "release\n").catch(() => undefined);
+    await hooks?.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("chat.message does not mistake a user diff summary for compaction", async () => {
@@ -329,4 +397,17 @@ function responseSequence(requests, responses) {
       headers: { "content-type": "application/json" },
     });
   };
+}
+
+async function waitForFile(path) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      await readFile(path);
+      return;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      await delay(5);
+    }
+  }
+  throw new Error(`Timed out waiting for ${path}`);
 }

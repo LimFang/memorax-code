@@ -14,10 +14,15 @@ export async function runEnsureBackendHook(options) {
   if (isRepoMemoryJobWorker() || ensureDisabled(options.ensureBackendValue)) return;
 
   const input = await readStdinJson();
+  await ensureBackendAvailable(options, input);
+}
+
+export async function ensureBackendAvailable(options, input = {}) {
   const homes = options.resolveHomes(input);
   let connection;
   try {
-    connection = resolveBackendConnection({ memoraxCodeHome: homes.memoraxCodeHome });
+    connection = options.backendConnection
+      ?? resolveBackendConnection({ memoraxCodeHome: homes.memoraxCodeHome });
   } catch (error) {
     options.debug?.(error instanceof Error ? error.message : String(error));
     return;
@@ -36,6 +41,7 @@ export async function runEnsureBackendHook(options) {
     command.value,
     options.buildStartArgs(homes, recoveryArguments),
     parsePositiveInt(options.startTimeoutValue, DEFAULT_ENSURE_BACKEND_START_TIMEOUT_MS),
+    options.nodePath,
   );
   if (result.code !== 0) {
     options.debug?.(
@@ -105,10 +111,10 @@ function memoraxCodeCommandAvailable(command) {
   return path.split(delimiter).some((dir) => dir && existsSync(join(dir, command)));
 }
 
-function runMemoraxCode(command, args, timeoutMs) {
+function runMemoraxCode(command, args, timeoutMs, nodePath) {
   return new Promise((resolve) => {
     const childArgs = nodeEntrypoint(command) ? [command, ...args] : args;
-    const childCommand = nodeEntrypoint(command) ? process.execPath : command;
+    const childCommand = nodeEntrypoint(command) ? (stringValue(nodePath) ?? process.execPath) : command;
     let stderr = "";
     let settled = false;
     const child = spawn(childCommand, childArgs, {
