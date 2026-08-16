@@ -8,8 +8,8 @@ installation. For a source checkout and contributor setup, see
 ## Requirements
 
 - Node.js 24 or newer and npm.
-- At least one of Codex or Claude Code installed in the environment where
-  MemoraX Code will run.
+- At least one of Codex, Claude Code, OpenCode Desktop, or the OpenCode CLI
+  installed in the environment where MemoraX Code will run.
 - Python 3 only when using Repo Memory operations.
 
 MemoraX-backed search, retrieval, and writeback additionally require a MemoraX
@@ -48,7 +48,8 @@ Backend status, and client guidance visible.
 
 The installer:
 
-1. Detects runnable Codex and Claude Code clients independently.
+1. Detects runnable Codex and Claude Code clients, plus OpenCode through its
+   configuration directory or CLI.
 2. Enables every detected client without asking for a client selector.
 3. Prompts for the MemoraX connection and preferred language when at least one
    client was detected.
@@ -57,7 +58,7 @@ The installer:
 
 Read the final summary. npm can finish installing the package even when a
 client integration or MemoraX configuration still needs attention.
-MemoraX Code does not read or change either client's model-provider URL,
+MemoraX Code does not read or change the clients' model-provider URL,
 credentials, model, or login mode.
 
 Do not use `--ignore-scripts` for a normal install or update. It skips the
@@ -72,6 +73,9 @@ opening a new MemoraX Code session.
 For Codex, enable **MemoraX Code Codex Adapter** from Plugins or `/plugins` if
 it is not already enabled. Claude Code registration is handled by the
 installer.
+
+OpenCode registration uses its plugin and skill auto-discovery. Restart or
+refresh OpenCode after installation so the managed integration is loaded.
 
 Open the client in a real project directory and submit at least one prompt
 before using the client doctor as the final verification. Until the Hooks have
@@ -88,7 +92,7 @@ memorax-code status
 memorax-cli status
 ```
 
-Then run the doctor command for each installed client:
+Codex and Claude Code also provide client-specific doctor commands:
 
 ```bash
 memorax-code-codex doctor
@@ -96,7 +100,7 @@ memorax-code-claude doctor
 ```
 
 `memorax-code status` checks the local Backend and selected client
-integrations. `memorax-cli status` checks whether the local MemoraX
+integrations, including OpenCode. `memorax-cli status` checks whether the local MemoraX
 configuration, workspace scope, and memory switches resolve without printing
 the API key. It does not send a test request to MemoraX; the first real search
 or write verifies remote connectivity and credentials.
@@ -151,7 +155,8 @@ memorax-code uninstall
 ```
 
 Do not start with `npm uninstall -g`. npm does not provide MemoraX Code with an
-uninstall lifecycle in which to disable managed Hooks and stop the Backend.
+uninstall lifecycle in which to remove managed client integrations and stop
+the Backend.
 The product command removes the managed integrations and global package while
 retaining `$MEMORAX_CODE_HOME` configuration and local traces, Claude plugin
 data, client provider configuration, and memories stored in MemoraX. Review
