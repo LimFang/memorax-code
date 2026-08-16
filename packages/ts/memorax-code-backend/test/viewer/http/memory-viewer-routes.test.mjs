@@ -22,9 +22,10 @@ test("memory viewer user route renders the compact summary surface", async () =>
     assert.equal(response.status, 200);
     assert.match(html, /<html lang="en" data-theme="light">/);
     assert.match(html, /Memory at a glance/);
-    assert.match(html, /data-client="codex"/);
-    assert.match(html, /data-client="claude-code"/);
-    assert.match(html, /data-client="opencode"/);
+    assert.match(html, /id="client-select"/);
+    assert.match(html, /<option value="codex">Codex<\/option>/);
+    assert.match(html, /<option value="claude-code">Claude Code<\/option>/);
+    assert.match(html, /<option value="opencode">OpenCode<\/option>/);
     assert.match(html, /id="language-toggle"/);
     assert.match(html, /id="theme-toggle"/);
     assert.match(html, /LANGUAGE_STORAGE_KEY,\['zh','en'\],'en'/);
@@ -41,7 +42,9 @@ test("memory viewer user route renders the compact summary surface", async () =>
     assert.match(html, /preparing:'生成中'/);
     assert.match(html, /bundle_missing:'Generating repository knowledge'/);
     assert.match(html, /bundle_missing:'正在生成仓库知识'/);
-    assert.match(html, /displayStatus=state\.reason==='bundle_missing'\?'preparing':state\.status/);
+    assert.match(html, /bundle_missing_idle:'Repository knowledge has not been initialized'/);
+    assert.match(html, /bundle_missing_idle:'仓库知识尚未初始化'/);
+    assert.match(html, /idleOpenCodeBundle=client==='opencode'&&state\.reason==='bundle_missing'/);
     assert.match(html, /className='state-dot '\+displayStatus/);
     assert.match(html, /current\.repoStates\[displayStatus\]/);
     assert.ok(Buffer.byteLength(html) < 64 * 1024);
