@@ -6,8 +6,8 @@ export const OPENCODE_REPO_MEMORY_AGENT = "memorax-code-repo-memory";
 
 export async function runOpenCodeRepoMemory(input, options = {}) {
   const env = options.env ?? process.env;
-  const serverUrl = stringValue(input?.serverUrl)
-    ?? stringValue(env.MEMORAX_CODE_OPENCODE_SERVER_URL);
+  const managedServerUrl = stringValue(env.MEMORAX_CODE_OPENCODE_SERVER_URL);
+  const serverUrl = stringValue(input?.serverUrl) ?? managedServerUrl;
   if (!serverUrl) {
     throw new Error(
       "OpenCode repo memory runner requires --server-url or MEMORAX_CODE_OPENCODE_SERVER_URL",
@@ -19,6 +19,7 @@ export async function runOpenCodeRepoMemory(input, options = {}) {
   if (!prompt) throw new Error("OpenCode repo memory runner requires --prompt");
 
   const baseUrl = normalizedServerUrl(serverUrl);
+  const authorization = serverAuthorization(env, baseUrl, managedServerUrl);
   const directory = resolve(repo);
   const parentID = stringValue(input?.parentID)
     ?? stringValue(env.MEMORAX_CODE_MEMORY_CLI_SESSION_ID);
@@ -27,7 +28,10 @@ export async function runOpenCodeRepoMemory(input, options = {}) {
   try {
     const session = await requestJson(fetchImpl, endpoint(baseUrl, "/session", directory), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(authorization ? { authorization } : {}),
+      },
       body: JSON.stringify({
         ...(parentID ? { parentID } : {}),
         title: "MemoraX Code Repo Memory",
@@ -41,7 +45,10 @@ export async function runOpenCodeRepoMemory(input, options = {}) {
       endpoint(baseUrl, `/session/${encodeURIComponent(sessionID)}/message`, directory),
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(authorization ? { authorization } : {}),
+        },
         body: JSON.stringify({
           agent: OPENCODE_REPO_MEMORY_AGENT,
           parts: [{ type: "text", text: prompt }],
@@ -57,6 +64,7 @@ export async function runOpenCodeRepoMemory(input, options = {}) {
       await bestEffortDelete(
         fetchImpl,
         endpoint(baseUrl, `/session/${encodeURIComponent(sessionID)}`, directory),
+        authorization,
       );
     }
   }
@@ -97,6 +105,20 @@ function endpoint(baseUrl, pathname, directory) {
   return url;
 }
 
+function serverAuthorization(env, targetUrl, managedServerUrl) {
+  const password = rawString(env.OPENCODE_SERVER_PASSWORD);
+  if (!password || !managedServerUrl) return undefined;
+  let managedUrl;
+  try {
+    managedUrl = normalizedServerUrl(managedServerUrl);
+  } catch {
+    return undefined;
+  }
+  if (targetUrl.origin !== managedUrl.origin) return undefined;
+  const username = rawString(env.OPENCODE_SERVER_USERNAME) ?? "opencode";
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
+
 async function requestJson(fetchImpl, url, init, operation) {
   let response;
   try {
@@ -119,9 +141,12 @@ async function requestJson(fetchImpl, url, init, operation) {
   }
 }
 
-async function bestEffortDelete(fetchImpl, url) {
+async function bestEffortDelete(fetchImpl, url, authorization) {
   try {
-    await fetchImpl(url, { method: "DELETE" });
+    await fetchImpl(url, {
+      method: "DELETE",
+      headers: authorization ? { authorization } : {},
+    });
   } catch {
     // Session cleanup must not replace the prompt result or its error.
   }
@@ -150,6 +175,10 @@ function responseDetail(body) {
 
 function stringValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function rawString(value) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function errorMessage(error) {

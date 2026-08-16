@@ -12,12 +12,17 @@ import {
 test("OpenCode repo memory runner creates, prompts, and deletes a background session", async () => {
   const root = await mkdtemp(join(tmpdir(), "opencode-repo-memory-runner-"));
   const requests = [];
+  const authorization = `Basic ${Buffer.from("memorax-user: secret ").toString("base64")}`;
   const server = await startServer(async (request, response) => {
     requests.push({
       method: request.method,
       url: request.url,
+      authorization: request.headers.authorization,
       body: await requestBody(request),
     });
+    if (request.headers.authorization !== authorization) {
+      return json(response, 401, { message: "unauthorized" });
+    }
     if (request.method === "POST" && request.url.startsWith("/session?")) {
       return json(response, 200, { id: "session-repo-memory" });
     }
@@ -40,12 +45,22 @@ test("OpenCode repo memory runner creates, prompts, and deletes a background ses
       repo: root,
       prompt: "Build Repo Memory.",
     }, {
-      env: { MEMORAX_CODE_MEMORY_CLI_SESSION_ID: "parent-session" },
+      env: {
+        MEMORAX_CODE_MEMORY_CLI_SESSION_ID: "parent-session",
+        MEMORAX_CODE_OPENCODE_SERVER_URL: server.url,
+        OPENCODE_SERVER_USERNAME: "memorax-user",
+        OPENCODE_SERVER_PASSWORD: " secret ",
+      },
     });
 
     assert.equal(result, "Repo Memory updated.\n\nValidation passed.");
     assert.equal(requests.length, 3);
     assert.deepEqual(requests.map((request) => request.method), ["POST", "POST", "DELETE"]);
+    assert.deepEqual(requests.map((request) => request.authorization), [
+      authorization,
+      authorization,
+      authorization,
+    ]);
     for (const request of requests) {
       assert.equal(new URL(request.url, server.url).searchParams.get("directory"), root);
     }
