@@ -391,6 +391,7 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
   const root = mkdtempSync(join(tmpdir(), "memorax-code-dsh-runtime-bundle-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const adapterRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const adapterManifest = JSON.parse(readFileSync(join(adapterRoot, "package.json"), "utf8"));
   const memoraxCodeHome = join(root, "memorax-code-home");
   const dshHome = join(root, "dsh-home");
   const profileRoot = join(dshHome, "profiles", "web");
@@ -462,24 +463,8 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
     "memorax-code-adapter-common",
     "src",
     "windows-cli-invocation.mjs",
-  )), false);
-  assert.deepEqual(packedFiles, [
-    ".memorax-code-package.json",
-    "cordis.patch.yml",
-    "memorax-code-adapter-common/src/backend-connection.mjs",
-    "memorax-code-adapter-common/src/hooks/ensure-backend-runner.mjs",
-    "memorax-code-adapter-common/src/repo-memory/repo-memory-job-context.mjs",
-    "memorax-code-adapter-common/src/runtime-record.mjs",
-    "package.json",
-    "src/backend-client.mjs",
-    "src/dsh-message.mjs",
-    "src/dsh-version.mjs",
-    "src/http-client.mjs",
-    "src/index.mjs",
-    "src/plugin.mjs",
-    "src/protocol.mjs",
-    "src/runtime-state.mjs",
-  ]);
+  )), true);
+  assert.deepEqual(packedFiles, ["package.json", ...adapterManifest.files].sort());
   const installedRoot = join(profileRoot, "node_modules", "@memorax-code", "dsh-adapter");
   const installed = await import(pathToFileURL(join(installedRoot, "src", "index.mjs")).href);
   assert.equal(installed.name, "memorax-code");

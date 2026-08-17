@@ -252,7 +252,12 @@ entered and do not pass through this detector.
 `[memory.skill_reminder].interval_turns` defaults to `5`; its environment
 override is `MEMORAX_CODE_MEMORY_SKILL_REMINDER_INTERVAL_TURNS`. A positive
 value controls the reminder cadence for Codex, Claude Code, and OpenCode,
-beginning with the first eligible prompt.
+beginning with the first eligible prompt. In DSH, the same interval controls
+trusted repo-scoped Procedure Memory application, beginning with the first
+eligible Turn. DSH also applies trusted repo-scoped User Profile preferences
+when it first observes an eligible session and restores them after successful
+context compaction. These local contexts remain separate from automatic
+writeback content.
 
 | Field | Environment override | Fallback |
 | --- | --- | --- |
@@ -264,16 +269,18 @@ Supported policies are `every-commit`, `commit-count`, `daily`,
 `pull-request`, `pull-request-or-daily`, and `adaptive`. Invalid policy values
 fall back to `adaptive`.
 
-In Codex, Claude Code, and OpenCode, the first eligible prompt starts a
+In Codex, Claude Code, DSH, and OpenCode, the first eligible prompt starts a
 background build only when the Backend has authorized a Git worktree and that
 worktree has no `.repo_memory/PROFILE.md`. If the Backend or workspace
 authority is unavailable, the client integration skips that attempt instead
-of falling back to its local workspace path.
+of falling back to its local workspace path. DSH schedules this work through
+its native pre-step integration rather than a Hook.
 
-A relevant repo-read runs supervised maintenance in all three clients. The
-configured policy may select a build, update, or no-op. OpenCode executes the
-job through its active local server. Desktop-only installations do not require
-a standalone `opencode` executable in `PATH`.
+A relevant repo-read runs supervised maintenance in all four clients. The
+configured policy may select a build, update, or no-op. DSH maintenance
+requires an enabled, managed Profile that includes `@deepseek-ai/dsh-headless`.
+OpenCode executes the job through its active local server. Desktop-only
+installations do not require a standalone `opencode` executable in `PATH`.
 
 ## Local traces
 

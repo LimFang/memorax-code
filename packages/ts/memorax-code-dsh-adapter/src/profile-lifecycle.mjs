@@ -33,6 +33,11 @@ const sourceCommonRoot = resolve(MODULE_DIR, "../../memorax-code-adapter-common/
 const commonRoot = existsSync(join(stagedCommonRoot, "config-utils.mjs"))
   ? stagedCommonRoot
   : sourceCommonRoot;
+const stagedSkillRoot = resolve(ADAPTER_ROOT, "skills/memorax-code");
+const sourceSkillRoot = resolve(MODULE_DIR, "../../memorax-code-codex-adapter/skills/memorax-code");
+const skillRoot = existsSync(join(stagedSkillRoot, "SKILL.md"))
+  ? stagedSkillRoot
+  : sourceSkillRoot;
 const {
   atomicWriteJson,
   readAdapterState,
@@ -52,18 +57,52 @@ const PACKAGE_METADATA_FILE = ".memorax-code-package.json";
 const PROFILE_BUNDLE_FILES = Object.freeze([
   PACKAGE_METADATA_FILE,
   "cordis.patch.yml",
+  "hooks/repo-memory-job.mjs",
+  "skills/memorax-code/SKILL.md",
+  "skills/memorax-code/agents/claude.yaml",
+  "skills/memorax-code/agents/openai.yaml",
+  "skills/memorax-code/defaults.json",
+  "skills/memorax-code/references/memorax-add.md",
+  "skills/memorax-code/references/memorax-search.md",
+  "skills/memorax-code/references/personal-read.md",
+  "skills/memorax-code/references/personal-write.md",
+  "skills/memorax-code/references/repo-build.md",
+  "skills/memorax-code/references/repo-read.md",
+  "skills/memorax-code/references/repo-templates.md",
+  "skills/memorax-code/references/repo-update.md",
+  "skills/memorax-code/scripts/collect_all.py",
+  "skills/memorax-code/scripts/detect_updates.py",
+  "skills/memorax-code/scripts/git_commit_facets.py",
+  "skills/memorax-code/scripts/github_resource_facets.py",
+  "skills/memorax-code/scripts/gitlab_resource_facets.py",
+  "skills/memorax-code/scripts/prepare_repo_memory.py",
+  "skills/memorax-code/scripts/user_profile_memory.py",
+  "skills/memorax-code/scripts/validate_memory.py",
   "src/index.mjs",
   "src/backend-client.mjs",
   "src/dsh-message.mjs",
   "src/dsh-version.mjs",
   "src/http-client.mjs",
+  "src/personal-context-worker.mjs",
+  "src/personal-context.mjs",
   "src/plugin.mjs",
   "src/protocol.mjs",
   "src/runtime-state.mjs",
   "memorax-code-adapter-common/src/backend-connection.mjs",
+  "memorax-code-adapter-common/src/config-utils.mjs",
   "memorax-code-adapter-common/src/hooks/ensure-backend-runner.mjs",
+  "memorax-code-adapter-common/src/hooks/memory-skill-reminder-policy.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-memory-auto-build.mjs",
   "memorax-code-adapter-common/src/repo-memory/repo-memory-job-context.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-memory-job-marker.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-memory-job-supervisor.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-memory-job-worker.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-procedure-memory-context.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-memory-update-policy-evaluator.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-memory-update-policy.mjs",
+  "memorax-code-adapter-common/src/repo-memory/repo-user-profile-context.mjs",
   "memorax-code-adapter-common/src/runtime-record.mjs",
+  "memorax-code-adapter-common/src/windows-cli-invocation.mjs",
 ]);
 
 export function discoverDshProfiles(options = {}) {
@@ -747,8 +786,12 @@ function runtimeBundleMatches(root, metadata, sourceFiles) {
 
 function bundleSourcePath(paths, relativePath) {
   const commonPrefix = "memorax-code-adapter-common/src/";
-  return relativePath.startsWith(commonPrefix)
-    ? join(commonRoot, relativePath.slice(commonPrefix.length))
+  if (relativePath.startsWith(commonPrefix)) {
+    return join(commonRoot, relativePath.slice(commonPrefix.length));
+  }
+  const skillPrefix = "skills/memorax-code/";
+  return relativePath.startsWith(skillPrefix)
+    ? join(skillRoot, relativePath.slice(skillPrefix.length))
     : join(paths.adapterRoot, relativePath);
 }
 

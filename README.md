@@ -78,16 +78,16 @@ MemoraX-backed search, retrieval, and writeback remain unavailable.
 ### Try Cross-Session Memory
 
 Clone the example repository from the product website, then open Codex, Claude
-Code, or OpenCode in the project directory:
+Code, DeepSeek Harness, or OpenCode in the project directory:
 
 ```bash
 git clone https://github.com/SWE-agent/test-repo.git
 cd test-repo
 ```
 
-Invoke the Skill as `$memorax-code` in Codex or `/memorax-code` in Claude Code.
-In OpenCode, ask the agent to use the `memorax-code` skill by name. The prompts
-below use its product name and work in all three clients.
+Invoke the Skill as `$memorax-code` in Codex or `/memorax-code` in Claude Code
+or DeepSeek Harness. In OpenCode, ask the agent to use the `memorax-code` skill
+by name. The prompts below use its product name and work in all four clients.
 
 Send these prompts in order in the same session:
 

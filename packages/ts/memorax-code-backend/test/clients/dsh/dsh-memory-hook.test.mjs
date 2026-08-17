@@ -16,6 +16,7 @@ import {
 import { dshTurnInterval } from "./support/dsh-session-fixtures.mjs";
 
 const TEST_WORKSPACE = fileURLToPath(new URL("../../..", import.meta.url));
+const TEST_REPO_ROOT = resolve(TEST_WORKSPACE, "../../..");
 
 test("Backend runs a DSH native Turn through retrieval and automatic writeback", async () => {
   const sessionHome = await mkdtemp(join(tmpdir(), "memorax-code-dsh-hook-"));
@@ -87,6 +88,7 @@ test("Backend runs a DSH native Turn through retrieval and automatic writeback",
   try {
     const startBody = await backendClient.recordTurnStart(turnStart);
     assert.equal(startBody.ok, true);
+    assert.equal(startBody.repoMemoryWorktree, TEST_REPO_ROOT);
     assert.match(startBody.additionalContext, /durable Session Event Log/);
 
     const mismatched = structuredClone(interval);
