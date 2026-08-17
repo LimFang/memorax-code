@@ -68,6 +68,7 @@ async function stageMainPackage(destination) {
     "lib/memorax-code-adapter-common",
     "lib/memorax-code-codex-adapter",
     "lib/memorax-code-claude-adapter",
+    "lib/memorax-code-dsh-adapter",
     "lib/memorax-code-opencode-adapter",
   ]) {
     await mkdir(join(destination, path), { recursive: true });
@@ -97,6 +98,14 @@ async function stageMainPackage(destination) {
   await copyFile(
     "packages/ts/memorax-code-claude-adapter/package.json",
     join(destination, "lib/memorax-code-claude-adapter/package.json"),
+  );
+  await copyFile(
+    "packages/ts/memorax-code-dsh-adapter/package.json",
+    join(destination, "lib/memorax-code-dsh-adapter/package.json"),
+  );
+  await copyFile(
+    "packages/ts/memorax-code-dsh-adapter/cordis.patch.yml",
+    join(destination, "lib/memorax-code-dsh-adapter/cordis.patch.yml"),
   );
   await copyFile(
     "packages/ts/memorax-code-opencode-adapter/package.json",
@@ -140,6 +149,7 @@ async function validateStaging(packageRoot) {
     "bin/memorax-code-opencode.mjs",
     "bin/memorax-code-npm-preinstall.mjs",
     "lib/client-hook-runtime.mjs",
+    "lib/dsh-plugin-install.mjs",
     "lib/node-version.mjs",
     "lib/resolve-claude-command.mjs",
     "lib/resolve-codex-command.mjs",
@@ -177,6 +187,17 @@ async function validateStaging(packageRoot) {
     "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/backend-connection.mjs",
     "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/runtime-record.mjs",
     "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/hooks/ensure-backend-runner.mjs",
+    "lib/memorax-code-dsh-adapter/package.json",
+    "lib/memorax-code-dsh-adapter/cordis.patch.yml",
+    "lib/memorax-code-dsh-adapter/src/index.mjs",
+    "lib/memorax-code-dsh-adapter/src/backend-client.mjs",
+    "lib/memorax-code-dsh-adapter/src/dsh-message.mjs",
+    "lib/memorax-code-dsh-adapter/src/dsh-version.mjs",
+    "lib/memorax-code-dsh-adapter/src/http-client.mjs",
+    "lib/memorax-code-dsh-adapter/src/plugin.mjs",
+    "lib/memorax-code-dsh-adapter/src/profile-lifecycle.mjs",
+    "lib/memorax-code-dsh-adapter/src/protocol.mjs",
+    "lib/memorax-code-dsh-adapter/src/runtime-state.mjs",
     "lib/memorax-code-opencode-adapter/src/plugin.mjs",
     "lib/memorax-code-opencode-adapter/src/plugin-install.mjs",
     "lib/memorax-code-opencode-adapter/src/cli.mjs",
