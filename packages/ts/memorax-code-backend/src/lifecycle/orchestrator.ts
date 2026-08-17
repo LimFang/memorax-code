@@ -917,11 +917,23 @@ async function restorePreviouslyEnabledDsh(
     context,
     quiescedDsh,
   );
-  if (activated?.ok !== false && activated?.enabled === true) return activated;
+  if (activated?.ok !== false
+    && activated?.enabled === true
+    && sameDshProfileSet(activated.profiles, quiescedDsh?.profiles)) return activated;
   if (!dshLifecycle || quiescedDsh?.previouslyEnabled !== true) return undefined;
   const prepared = await dshLifecycle.prepareEnable(context);
   if (prepared.ok === false || prepared.installed !== true) return prepared;
   return await dshLifecycle.activate?.(context) ?? prepared;
+}
+
+function sameDshProfileSet(actual: unknown[] | undefined, expected: unknown[] | undefined): boolean {
+  if (!actual?.every(nonEmptyString) || !expected?.every(nonEmptyString)) return false;
+  const actualNames = new Set(actual);
+  const expectedNames = new Set(expected);
+  return actualNames.size === actual.length
+    && expectedNames.size === expected.length
+    && actualNames.size === expectedNames.size
+    && [...actualNames].every((name) => expectedNames.has(name));
 }
 
 async function reactivatePreviouslyEnabledDsh(

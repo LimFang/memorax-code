@@ -188,6 +188,41 @@ test("failed DSH preparation restores the prior authority after Backend recovery
   }
 });
 
+test("failed DSH deselection restores every previously enabled Profile", async () => {
+  const fixture = await createFixture();
+  const webProfilePath = join(fixture.dshHome, "profiles", "web", "package.json");
+  mkdirSync(dirname(webProfilePath), { recursive: true });
+  writeJson(webProfilePath, {
+    name: "dsh-profile-web",
+    private: true,
+    dependencies: {},
+    dsh: { profile: { bundles: ["@deepseek-ai/dsh-base"] } },
+  });
+  try {
+    const started = runCli(fixture, "start", ["--clients", "dsh"]);
+    assert.equal(started.status, 0, `${started.stdout}\n${started.stderr}`);
+    assert.equal(profileHasAdapter(fixture.profilePath), true);
+    assert.equal(profileHasAdapter(webProfilePath), true);
+
+    const failed = runCli(fixture, "start", ["--clients", "none"], {
+      FAKE_DSH_REMOVE_FAIL_PROFILE: "web",
+    });
+    assert.equal(failed.status, 1, `${failed.stdout}\n${failed.stderr}`);
+    const report = JSON.parse(failed.stdout);
+    assert.equal(report.backend.ok, true, report.backend.error);
+    assert.equal(report.backend.reason, "adapter_disable_failed_backend_recovered");
+    assert.equal(report.dshAdapter.action, "dsh-plugin-activate");
+    assert.equal(report.dshAdapter.enabled, true);
+    assert.deepEqual(report.dshAdapter.profiles, ["headless", "web"]);
+    assert.deepEqual(readJson(fixture.statePath).profiles, ["headless", "web"]);
+    assert.equal(profileHasAdapter(fixture.profilePath), true);
+    assert.equal(profileHasAdapter(webProfilePath), true);
+  } finally {
+    runCli(fixture, "stop", ["--clients", "none"]);
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("DSH-only status reports an optional skip when no Profile exists", async () => {
   const fixture = await createFixture();
   try {
@@ -270,6 +305,7 @@ if (operation === "add") {
   appendFileSync(process.env.FAKE_DSH_LOG, "add-end enabled=" + enabled() + "\\n");
 } else if (operation === "remove") {
   appendFileSync(process.env.FAKE_DSH_LOG, "remove enabled=" + enabled() + "\\n");
+  if (profile === process.env.FAKE_DSH_REMOVE_FAIL_PROFILE) process.exit(1);
   rmSync(installedAdapterRoot, { recursive: true, force: true });
   delete manifest.dependencies["@memorax-code/dsh-adapter"];
   manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((name) => name !== "@memorax-code/dsh-adapter");
