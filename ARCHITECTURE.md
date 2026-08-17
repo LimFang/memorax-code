@@ -331,19 +331,13 @@ sequenceDiagram
   Runtime-->>Coordinator: local scheduling accepted or rejected
   Runtime->>Provider: later flush buffered or chunked writeback
   Provider-->>Runtime: accepted task identity
-  alt reconciliation-enabled client
-    Runtime->>Obs: emit accepted task event and identity
-    Obs->>Projection: update the live task projection
-    Obs->>Trace: persist the same writeback event
-    Reconciler->>Projection: list live and persisted pending tasks
-    Projection->>Trace: read persisted writeback history
-    Reconciler->>Provider: query writeback status
-    Reconciler->>Trace: append terminal status when completed
-  else DSH trace-only bridge
-    Runtime->>Obs: emit accepted task event and identity
-    Obs->>Trace: persist the same writeback event
-    Note over Projection,Reconciler: no DSH task projection or reconciliation in this layer
-  end
+  Runtime->>Obs: emit accepted task event and identity
+  Obs->>Projection: update the live task projection
+  Obs->>Trace: persist the same writeback event
+  Reconciler->>Projection: list live and persisted pending tasks
+  Projection->>Trace: read persisted writeback history
+  Reconciler->>Provider: query writeback status
+  Reconciler->>Trace: append terminal status when completed
 ```
 
 - Retrieval events do not enter reconciliation.
@@ -360,8 +354,9 @@ sequenceDiagram
   resolved and validated from the persisted Session workspace.
 - DSH uses the shared retrieval, buffering, chunking, redaction, provider, and
   client-qualified trace paths. Its normalized Search and Add operations enter
-  DSH trace, while task reconciliation and Memory Viewer remain intentionally
-  disabled until those capabilities are added explicitly.
+  DSH trace and pending Add tasks use the shared writeback-reconciliation
+  projection. Its Viewer projection remains intentionally disabled until that
+  capability is added explicitly.
 - OpenCode terminal handling accepts only matching SDK user and completed
   assistant records for the correlated session and parent message. An exact
   `MessageAbortedError` closes the Turn as interrupted without writeback; other
@@ -375,11 +370,9 @@ sequenceDiagram
   buffer runtime cancels and discards pending fallback turns for the same
   client and session before buffering under the Git scope. It does not migrate
   or flush those turns across namespaces.
-- For clients with writeback reconciliation enabled, pending status can be
-  reconstructed from persisted local trace after Backend restart. A
-  still-pending provider status updates in-memory reconciliation policy rather
-  than appending a new trace event. DSH trace retains the accepted task event,
-  but DSH pending tasks are not yet reconstructed by this projection.
+- Pending writeback status can be reconstructed from client-qualified local
+  trace after Backend restart. A still-pending provider status updates
+  in-memory reconciliation policy rather than appending a new trace event.
 
 ### 3.5 Repo Memory coordination
 
