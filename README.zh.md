@@ -34,16 +34,16 @@
 Coding Agent 擅长解决眼前的问题，但新会话不会自动继承此前积累的架构认知、踩坑经验、仓库规则
 和协作偏好。
 
-MemoraX Code 让 Codex、Claude Code 和 OpenCode 共享一套能够持续积累的记忆。它会沉淀代码任务中的
-工程经验，持续整理仓库知识，并在后续任务中找回相关的工作流程和偏好。
+MemoraX Code 让 Codex、Claude Code、DeepSeek Harness 和 OpenCode 共享一套能够持续积累的记忆。
+它会沉淀代码任务中的工程经验，持续整理仓库知识，并在后续任务中找回相关的工作流程和偏好。
 
 它追求的不是“记得更多”，而是在需要时带回与当前任务相关的 Memory，让 Agent 减少重复搜索和试错，
 更快进入问题定位与事实验证。
 
 ## 快速开始
 
-开始前，请确保已安装 Node.js 24 或更高版本，以及 Codex、Claude Code 或 OpenCode 中的至少一个。
-Repo Memory 操作还需要 Python 3。
+开始前，请确保已安装 Node.js 24 或更高版本，以及 Codex、Claude Code、DeepSeek Harness 或 OpenCode
+中的至少一个。Repo Memory 操作还需要 Python 3。
 
 ### 安装与接入
 
@@ -59,9 +59,9 @@ npm install -g @memorax/memorax-code --foreground-scripts
 ```
 
 请保留 `--foreground-scripts`，以便查看完整的安装过程。安装器会自动检测本机可用的 Codex、
-Claude Code 和 OpenCode，并为检测到的客户端启用集成。按照终端提示输入 Base User ID、偏好语言
-和 API Key；Codex 用户还需按提示完成 Hook 的激活和信任确认。安装完成后，请重启或刷新所有检测到的
-客户端，再开始新会话。
+Claude Code、DeepSeek Harness 和 OpenCode，并为检测到的 Coding Agent 启用集成。按照终端提示输入
+Base User ID、偏好语言和 API Key；Codex 用户还需按提示完成 Hook 的激活和信任确认。安装完成后，
+请重启或刷新所有检测到的 Coding Agent，再开始新会话。
 
 如果跳过配置或安装过程无法交互，npm 包仍会安装，但 MemoraX 搜索、召回和写回功能无法使用。
 
@@ -142,8 +142,8 @@ MemoraX 云端不会接收模型服务商凭据或本地 Backend Token。
 memorax-code update
 ```
 
-该命令会沿用当前发布通道并保留配置。如果新版本修改了插件资产或 Skill，请重启或刷新
-Codex、Claude Code 和 OpenCode。
+该命令会沿用当前发布通道并保留配置。如果新版本修改了已安装的集成资产，请重启或刷新 Codex、
+Claude Code、DeepSeek Harness 和 OpenCode。
 
 ## 卸载
 

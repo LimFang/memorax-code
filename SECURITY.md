@@ -1,11 +1,10 @@
 # Security Policy
 
-MemoraX Code is a local-first integration for Codex, Claude Code, and OpenCode
-with an optional external bind mode and required communication with MemoraX
-for cloud-backed memory. Security reports should distinguish the local
-Backend, client-owned provider traffic, and MemoraX memory traffic.
-The source tree also contains a DeepSeek Harness (DSH) native Turn bridge whose
-request-time authority is covered by the same trust boundaries.
+MemoraX Code is a local-first integration for Codex, Claude Code, DeepSeek
+Harness (DSH), and OpenCode with an optional external bind mode and required
+communication with MemoraX for cloud-backed memory. Security reports should
+distinguish the local Backend, client-owned provider traffic, and MemoraX
+memory traffic.
 
 ## Supported Versions
 
@@ -46,6 +45,16 @@ Please allow time for triage and remediation before public disclosure.
   the currently resolved loopback HTTP authority. It preserves the existing
   lifecycle lock and client selection; remote or invalid authority and removed
   commands fail open without starting a process.
+- The managed DSH plugin may recover an unavailable loopback Backend only when
+  its package metadata and per-user lifecycle state agree on an enabled
+  authority and exact revision. Lifecycle commands publish disabled authority
+  before mutating Profiles. Missing, disabled, or invalid authority leaves the
+  MemoraX Code plugin inert without blocking DSH startup.
+- The globally installed DSH adapter source is read-only. Managed Profile
+  packages are content-addressed copies under `MEMORAX_CODE_HOME`; Profile
+  mutation goes through DSH's native plugin command. The DSH state record,
+  generated runtime, and Profile manifests are security-sensitive local
+  authority and must not be copied between users or edited by hand.
 - Initial Repo Memory builds use only the Git worktree returned by an
   authenticated Backend turn-start request. Backend or workspace-scope
   failures skip the build; client integrations do not fall back to
@@ -153,8 +162,10 @@ Use:
 memorax-code uninstall
 ```
 
-This stops the managed Backend, removes managed Codex/Claude integrations, and
-removes the global npm package when possible. It intentionally retains:
+This stops the managed Backend, removes managed client integrations, and
+removes the global npm package when possible. For DSH it removes only the
+managed MemoraX Code plugin from Profiles; the Profiles and their session data
+remain owned by DSH. It intentionally retains:
 
 - `MEMORAX_CODE_HOME`, including configuration and local traces;
 - Claude plugin data;

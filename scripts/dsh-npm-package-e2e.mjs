@@ -1,0 +1,540 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { createServer as createHttpServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
+import { tmpdir } from "node:os";
+import { basename, delimiter, dirname, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const OPT_IN_ENV = "MEMORAX_CODE_DSH_E2E";
+const TARBALL_ENV = "MEMORAX_CODE_DSH_E2E_MEMORAX_TARBALL";
+const DSH_VERSION = "0.1.0-rc.6";
+const DSH_PACKAGE = "@deepseek-ai/dsh";
+const DSH_MOCK_PACKAGE = "@deepseek-ai/dsh-llm-mock-server";
+const DSH_SPEC = DSH_PACKAGE + "@" + DSH_VERSION;
+const PNPM_SPEC = "pnpm@11.7.0";
+const RECALL = "MEMORAX_DSH_E2E_RECALL_7D49";
+const REPLY = "MEMORAX_DSH_E2E_VISIBLE_REPLY_5A62";
+const FIRST_PROMPT = "MEMORAX_DSH_E2E_FIRST_TURN";
+const RECOVERY_PROMPT = "MEMORAX_DSH_E2E_AFTER_BACKEND_CRASH";
+const STOPPED_PROMPT = "MEMORAX_DSH_E2E_AFTER_STOP";
+const MEMORAX_KEY = "memorax-dsh-e2e-key";
+const DEEPSEEK_KEY = "deepseek-dsh-e2e-key";
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const usage = [
+  "Usage:",
+  "  " + OPT_IN_ENV + "=1 node scripts/dsh-npm-package-e2e.mjs",
+  "",
+  "Optional:",
+  "  " + TARBALL_ENV + "=/absolute/path/to/memorax-code.tgz",
+  "",
+  "Runs an isolated real-client E2E against " + DSH_SPEC + ".",
+  "DSH, Cordis, npm lifecycle scripts, Profiles, and the Backend are real;",
+  "only the LLM and MemoraX HTTP endpoints are mocked.",
+  "",
+].join("\n");
+
+let isolatedRoot;
+let stageRoot;
+let memoraxEntry;
+let runtimeEnv;
+let backendPid;
+let llmServer;
+let memoraxServer;
+
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  process.stdout.write(usage);
+  process.exit(0);
+}
+if (process.argv.length > 2) {
+  console.error("Unknown argument: " + process.argv[2] + "\n\n" + usage);
+  process.exit(2);
+}
+if (process.env[OPT_IN_ENV] !== "1") {
+  console.error(OPT_IN_ENV + "=1 is required; this E2E never runs by default\n\n" + usage);
+  process.exit(2);
+}
+
+main().catch((error) => {
+  console.error("dsh_npm_package_e2e_failed: " + (error?.stack || error));
+  process.exitCode = 1;
+}).finally(cleanup);
+
+async function main() {
+  isolatedRoot = await mkdtemp(join(tmpdir(), "memorax-code-dsh-e2e-"));
+  const paths = {
+    home: join(isolatedRoot, "home"),
+    memoraxHome: join(isolatedRoot, "memorax home"),
+    dshHome: join(isolatedRoot, "dsh home"),
+    codexHome: join(isolatedRoot, "codex home"),
+    claudeHome: join(isolatedRoot, "claude home"),
+    opencodeHome: join(isolatedRoot, "opencode config"),
+    prefix: join(isolatedRoot, "npm prefix"),
+    cache: join(isolatedRoot, "npm cache"),
+    workspace: join(isolatedRoot, "workspace"),
+    tarballs: join(isolatedRoot, "tarballs"),
+  };
+  await Promise.all(Object.values(paths).map((path) => mkdir(path, { recursive: true })));
+  for (const [name, path] of Object.entries(paths)) paths[name] = await realpath(path);
+  await writeFile(join(paths.workspace, "README.md"), "# isolated DSH E2E\n");
+
+  const env = {
+    ...cleanEnvironment(),
+    HOME: paths.home,
+    MEMORAX_CODE_HOME: paths.memoraxHome,
+    DSH_HOME: paths.dshHome,
+    CODEX_HOME: paths.codexHome,
+    CLAUDE_CONFIG_DIR: paths.claudeHome,
+    CLAUDE_HOME: paths.claudeHome,
+    OPENCODE_CONFIG_DIR: paths.opencodeHome,
+    NPM_CONFIG_PREFIX: paths.prefix,
+    NPM_CONFIG_CACHE: paths.cache,
+    NPM_CONFIG_UPDATE_NOTIFIER: "false",
+    NPM_CONFIG_FUND: "false",
+    NPM_CONFIG_AUDIT: "false",
+    PATH: npmBin(paths.prefix) + delimiter + (process.env.PATH || ""),
+  };
+  await run("git", ["init", "--quiet"], paths.workspace, env);
+  await run("git", ["-c", "user.name=DSH E2E", "-c", "user.email=e2e@example.invalid",
+    "add", "README.md"], paths.workspace, env);
+  await run("git", ["-c", "user.name=DSH E2E", "-c", "user.email=e2e@example.invalid",
+    "commit", "--quiet", "-m", "fixture"], paths.workspace, env);
+
+  progress("installing the pinned DSH release and its test-only dependencies");
+  await run("npm", ["install", "-g", "--prefix", paths.prefix, DSH_SPEC,
+    DSH_MOCK_PACKAGE + "@" + DSH_VERSION, PNPM_SPEC, "--foreground-scripts",
+    "--loglevel", "warn"], paths.workspace, env, { timeout: 300_000 });
+  const dsh = binPath(paths.prefix, "dsh");
+  assert.equal((await run(dsh, ["--version"], paths.workspace, env)).stdout.trim(), DSH_VERSION);
+  const mockRoot = await packageRoot(paths.prefix, DSH_MOCK_PACKAGE);
+  const mockModule = await import(pathToFileURL(join(mockRoot, "lib", "index.js")).href);
+  llmServer = await mockModule.startMockLlmServer({
+    sequence: ["success"],
+    repeatLast: true,
+    apiKey: DEEPSEEK_KEY,
+    successText: REPLY,
+  });
+  memoraxServer = await startMemoraxMock();
+  const port = await freePort();
+
+  runtimeEnv = {
+    ...env,
+    MEMORAX_CODE_BACKEND_PORT: String(port),
+    MEMORAX_CODE_DSH_COMMAND: dsh,
+    MEMORAX_CODE_SKIP_CODEX_PLUGIN_INSTALL: "1",
+    MEMORAX_CODE_SKIP_CLAUDE_ADAPTER_INSTALL: "1",
+    MEMORAX_CODE_SKIP_OPENCODE_ADAPTER_INSTALL: "1",
+    MEMORAX_CODE_MEMORAX_ENDPOINT: memoraxServer.baseUrl,
+    MEMORAX_CODE_MEMORAX_API_KEY: MEMORAX_KEY,
+    MEMORAX_CODE_MEMORAX_USER_ID: "memorax-dsh-e2e-user",
+    MEMORAX_CODE_MEMORY_RETRIEVAL_ENABLED: "true",
+    MEMORAX_CODE_MEMORY_WRITEBACK_ENABLED: "true",
+    MEMORAX_CODE_MEMORY_WRITEBACK_BUFFER_ENABLED: "false",
+    MEMORAX_CODE_MEMORY_WRITEBACK_CHUNK_ENABLED: "false",
+    DEEPSEEK_BASE_URL: llmServer.baseURL + "/v1",
+    DEEPSEEK_API_KEY: DEEPSEEK_KEY,
+    DSH_TELEMETRY_DISABLED: "1",
+    DSH_PERMISSION_MODE: "danger-full-access",
+  };
+
+  progress("creating the first real DSH Profile");
+  await createProfile(dsh, "headless", paths, runtimeEnv, true);
+  const headless = join(paths.dshHome, "profiles", "headless");
+  const headlessSentinel = join(headless, "memorax-e2e-preserve.txt");
+  await writeFile(headlessSentinel, "preserve headless\n");
+
+  const tarball = await memoraxTarball(paths, runtimeEnv);
+  progress("installing the MemoraX Code tarball with real npm lifecycle scripts");
+  const installed = await run("npm", ["install", "-g", "--prefix", paths.prefix, tarball.path,
+    "--foreground-scripts", "--loglevel", "warn"], paths.workspace, runtimeEnv,
+  { timeout: 300_000 });
+  const installOutput = installed.stdout + "\n" + installed.stderr;
+  assert.match(installOutput, /Detected existing DeepSeek Harness profiles/);
+  assert.match(installOutput, /DeepSeek Harness profiles: found \(headless\)/);
+  assert.match(installOutput, /Restart or refresh DeepSeek Harness/);
+  assert.doesNotMatch(installOutput, /client adapters were skipped for this install/);
+
+  const installedRoot = await packageRoot(paths.prefix, "@memorax/memorax-code");
+  memoraxEntry = join(installedRoot, "bin", "memorax-code.mjs");
+  const sourceRoot = join(installedRoot, "lib", "memorax-code-dsh-adapter");
+  const statePath = join(paths.memoraxHome, "adapters", "dsh", "state.json");
+  const generationsRoot = join(paths.memoraxHome, "adapters", "dsh", "runtime", "generations");
+  const backendStatePath = join(paths.memoraxHome, "runtime", "backend", "backend.pid.json");
+  const sessionsRoot = join(paths.dshHome, "sessions");
+  const lifecycle = async (command, expectedExit = 0) => {
+    const result = await run(process.execPath, [memoraxEntry, command, "--home",
+      paths.memoraxHome, "--port", String(port), "--clients", "dsh", "--json"],
+    paths.workspace, runtimeEnv, { expectedExit });
+    return JSON.parse(result.stdout);
+  };
+
+  await assertProfile(headless, true);
+  const initialState = await readJson(statePath);
+  assert.equal(initialState.enabled, true);
+  assert.deepEqual(initialState.profiles, ["headless"]);
+  assert.equal(initialState.dshVersion, DSH_VERSION);
+  assert.equal(resolve(initialState.adapterRoot), resolve(sourceRoot));
+  assert.equal(isInside(initialState.runtimeBundleRoot, generationsRoot), true);
+  assert.equal(await exists(join(initialState.runtimeBundleRoot,
+    ".memorax-code-package.json")), true);
+  assert.equal(await exists(join(sourceRoot, ".memorax-code-package.json")), false);
+  assert.equal(await exists(join(sourceRoot, "runtime")), false);
+  assert.equal(await exists(join(sourceRoot, "state.json")), false);
+  const profilePackage = await realpath(join(headless, "node_modules",
+    "@memorax-code", "dsh-adapter"));
+  const profileMetadata = await readJson(join(profilePackage, ".memorax-code-package.json"));
+  assert.equal(resolve(profileMetadata.runtimeBundleRoot),
+    resolve(initialState.runtimeBundleRoot));
+  assert.equal(await exists(join(profilePackage, "src", "profile-lifecycle.mjs")), false);
+
+  const status = await lifecycle("status");
+  assert.equal(status.ok, true);
+  assert.equal(status.dshAdapter?.enabled, true);
+  assert.equal(status.dshAdapter?.integration, "plugin");
+  backendPid = validPid((await readJson(backendStatePath)).pid);
+
+  progress("running a real DSH Turn through explicit automatic Search and Add");
+  await runTurn(dsh, FIRST_PROMPT, paths.workspace, runtimeEnv);
+  await waitFor(() => requests("/v1/memories/add").length === 1, "first Add");
+  assert.equal(requests("/v1/memories/search")[0]?.body?.query, FIRST_PROMPT);
+  assertAdd(requests("/v1/memories/add")[0], FIRST_PROMPT);
+  assert.match(JSON.stringify(llmServer.requests), new RegExp(RECALL));
+
+  progress("recovering a crashed Backend from the current DSH generation");
+  const crashedPid = backendPid;
+  process.kill(crashedPid, "SIGKILL");
+  await waitFor(() => !alive(crashedPid), "crashed Backend exit");
+  backendPid = undefined;
+  await runTurn(dsh, RECOVERY_PROMPT, paths.workspace, runtimeEnv);
+  await waitFor(() => requests("/v1/memories/add").length === 2, "recovery Add");
+  const recoveredState = await readJson(statePath);
+  assert.equal(resolve(recoveredState.runtimeBundleRoot),
+    resolve(initialState.runtimeBundleRoot));
+  backendPid = validPid((await readJson(backendStatePath)).pid);
+  assert.notEqual(backendPid, crashedPid);
+  assert.equal(requests("/v1/memories/search").at(-1)?.body?.query, RECOVERY_PROMPT);
+  assertAdd(requests("/v1/memories/add").at(-1), RECOVERY_PROMPT);
+
+  progress("reconciling a Profile created after installation");
+  await createProfile(dsh, "web", paths, runtimeEnv, false);
+  const web = join(paths.dshHome, "profiles", "web");
+  const webSentinel = join(web, "memorax-e2e-preserve.txt");
+  await writeFile(webSentinel, "preserve web\n");
+  const drift = await lifecycle("status", 1);
+  assert.equal(drift.dshAdapter?.reason, "profile_drift");
+  assert.equal((await lifecycle("start")).dshAdapter?.enabled, true);
+  backendPid = validPid((await readJson(backendStatePath)).pid);
+  await assertProfile(headless, true);
+  await assertProfile(web, true);
+  assert.deepEqual((await readJson(statePath)).profiles, ["headless", "web"]);
+
+  progress("stopping and proving a DSH Turn cannot revive the Backend");
+  const trafficBeforeStop = memoraxServer.requests.length;
+  const pidBeforeStop = backendPid;
+  assert.equal((await lifecycle("stop")).ok, true);
+  await waitFor(() => !alive(pidBeforeStop), "stopped Backend exit");
+  backendPid = undefined;
+  assert.equal((await readJson(statePath)).enabled, false);
+  await assertProfile(headless, false);
+  await assertProfile(web, false);
+  await runTurn(dsh, STOPPED_PROMPT, paths.workspace, runtimeEnv);
+  await delay(300);
+  assert.equal(memoraxServer.requests.length, trafficBeforeStop);
+  assert.equal(await exists(backendStatePath), false);
+
+  const sessions = await snapshotFiles(sessionsRoot);
+  assert.ok(sessions.size >= 3, "expected persisted sessions from three DSH Turns");
+  progress("uninstalling while preserving DSH Profiles and sessions");
+  assert.equal((await lifecycle("uninstall")).ok, true);
+  memoraxEntry = undefined;
+  assert.equal(await exists(installedRoot), false);
+  assert.equal(await exists(statePath), false);
+  assert.equal(await exists(generationsRoot), false);
+  await assertProfile(headless, false);
+  await assertProfile(web, false);
+  assert.equal(await exists(join(headless, "node_modules", "@memorax-code", "dsh-adapter")), false);
+  assert.equal(await exists(join(web, "node_modules", "@memorax-code", "dsh-adapter")), false);
+  assert.equal(await readFile(headlessSentinel, "utf8"), "preserve headless\n");
+  assert.equal(await readFile(webSentinel, "utf8"), "preserve web\n");
+  assert.deepEqual(await snapshotFiles(sessionsRoot), sessions);
+
+  process.stdout.write(JSON.stringify({
+    ok: true,
+    dshVersion: DSH_VERSION,
+    memoraxPackageSource: tarball.source,
+    searches: requests("/v1/memories/search").length,
+    adds: requests("/v1/memories/add").length,
+    backendCrashRecoveredCurrentGeneration: true,
+    laterProfileReconciled: true,
+    uninstallPreservedProfilesAndSessions: true,
+  }, null, 2) + "\n");
+}
+
+async function createProfile(dsh, name, paths, env, persistent) {
+  await run(dsh, ["--profile", name, "--dump-default-config"], paths.workspace, env);
+  if (!persistent) return;
+  await writeFile(join(paths.dshHome, "profiles", name, "cordis.patch.yml"), [
+    "- id: session-title-llm",
+    "  disabled: true",
+    "",
+    "- id: session-persistence-jsonl",
+    "  config:",
+    "    root: !!js dshHomePath('sessions')",
+    "    compression: none",
+    "    packChunks: false",
+    "",
+  ].join("\n"));
+}
+
+async function memoraxTarball(paths, env) {
+  if (process.env[TARBALL_ENV]) {
+    return { path: await realpath(resolve(process.env[TARBALL_ENV])), source: "provided" };
+  }
+  stageRoot = join(repoRoot, "dist", "dsh-e2e-" + process.pid + "-" + Date.now());
+  await run(join(repoRoot, "scripts", "build-npm-packages.sh"),
+    [relative(repoRoot, stageRoot)], repoRoot, env, { timeout: 300_000 });
+  const packed = await run("npm", ["pack", join(stageRoot, "memorax-code"),
+    "--pack-destination", paths.tarballs, "--json"], paths.workspace, env,
+  { timeout: 300_000 });
+  const report = JSON.parse(packed.stdout);
+  assert.equal(report.length, 1);
+  return { path: join(paths.tarballs, report[0].filename), source: "checkout" };
+}
+
+async function runTurn(dsh, prompt, cwd, env) {
+  const result = await run(dsh, ["--profile", "headless", prompt], cwd, env);
+  assert.match(result.stdout, new RegExp(REPLY));
+}
+
+function assertAdd(request, prompt) {
+  assert.equal(request?.authorization, "Token " + MEMORAX_KEY);
+  assert.deepEqual(request?.body?.messages?.map((message) => [
+    message.role, message.content,
+  ]), [["user", prompt], ["assistant", REPLY]]);
+  assert.doesNotMatch(JSON.stringify(request.body), new RegExp(RECALL));
+}
+
+async function assertProfile(root, integrated) {
+  const manifest = await readJson(join(root, "package.json"));
+  assert.equal(Object.hasOwn(manifest.dependencies || {}, "@memorax-code/dsh-adapter"),
+    integrated);
+  assert.equal(Boolean(manifest.dsh?.profile?.bundles?.includes(
+    "@memorax-code/dsh-adapter")), integrated);
+}
+
+async function startMemoraxMock() {
+  const recorded = [];
+  const server = createHttpServer((request, response) => {
+    void handle(request, response).catch((error) => {
+      sendJson(response, 500, { success: false, error: String(error) });
+    });
+  });
+  async function handle(request, response) {
+    const body = await requestBody(request);
+    recorded.push({ path: request.url, authorization: request.headers.authorization, body });
+    if (request.headers.authorization !== "Token " + MEMORAX_KEY) {
+      sendJson(response, 401, { success: false });
+    } else if (request.method === "POST" && request.url === "/v1/memories/search") {
+      sendJson(response, 200, {
+        success: true,
+        data: { task_id: "search", status: "completed", data: [{
+          id: "memory", memory: RECALL, score: 1, metadata: { memory_type: "core" },
+        }] },
+      });
+    } else if (request.method === "POST" && request.url === "/v1/memories/add") {
+      sendJson(response, 202, {
+        success: true, data: { task_id: "add", status: "accepted", data: null },
+      });
+    } else if (request.method === "GET" &&
+      request.url?.startsWith("/v1/memories/add/status/")) {
+      sendJson(response, 200, {
+        success: true, data: { task_id: "add", status: "completed", data: null },
+      });
+    } else {
+      sendJson(response, 404, { success: false });
+    }
+  }
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  return {
+    baseUrl: "http://127.0.0.1:" + address.port,
+    requests: recorded,
+    close: () => new Promise((resolveClose) => {
+      server.close(resolveClose);
+      server.closeAllConnections();
+    }),
+  };
+}
+
+function sendJson(response, status, body) {
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify(body));
+}
+
+async function requestBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+}
+
+function requests(path) {
+  return memoraxServer.requests.filter((request) => request.path === path);
+}
+
+async function packageRoot(prefix, packageName) {
+  const parts = packageName.split("/");
+  for (const root of [
+    join(prefix, "lib", "node_modules", ...parts),
+    join(prefix, "node_modules", ...parts),
+  ]) {
+    if (await exists(join(root, "package.json"))) return root;
+  }
+  throw new Error("Package was not installed: " + packageName);
+}
+
+function npmBin(prefix) {
+  return process.platform === "win32" ? prefix : join(prefix, "bin");
+}
+
+function binPath(prefix, name) {
+  return join(npmBin(prefix), process.platform === "win32" ? name + ".cmd" : name);
+}
+
+async function freePort() {
+  const server = createNetServer();
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  await new Promise((resolveClose) => server.close(resolveClose));
+  return address.port;
+}
+
+async function run(command, args, cwd, env, options = {}) {
+  const child = spawn(command, args, {
+    cwd,
+    env: { ...env, PWD: cwd },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGKILL");
+  }, options.timeout || 120_000);
+  const result = await new Promise((resolveChild, rejectChild) => {
+    child.once("error", rejectChild);
+    child.once("close", (code, signal) => resolveChild({ code, signal }));
+  }).finally(() => clearTimeout(timer));
+  const expected = options.expectedExit ?? 0;
+  if (timedOut || result.code !== expected) {
+    throw new Error([
+      basename(command) + " exited " + (timedOut ? "after timeout" :
+        result.code ?? result.signal),
+      stdout.trim() && "stdout:\n" + stdout.slice(-8000),
+      stderr.trim() && "stderr:\n" + stderr.slice(-8000),
+    ].filter(Boolean).join("\n"));
+  }
+  return { ...result, stdout, stderr };
+}
+
+async function waitFor(predicate, label) {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await delay(25);
+  }
+  throw new Error("Timed out waiting for " + label);
+}
+
+function delay(milliseconds) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+}
+
+function validPid(value) {
+  assert.ok(Number.isSafeInteger(value) && value > 0, "Invalid Backend PID");
+  return value;
+}
+
+function alive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+async function snapshotFiles(root) {
+  const snapshot = new Map();
+  async function visit(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) await visit(path);
+      else if (entry.isFile()) snapshot.set(relative(root, path), await readFile(path, "utf8"));
+    }
+  }
+  await visit(root);
+  return snapshot;
+}
+
+function isInside(path, parent) {
+  const child = relative(resolve(parent), resolve(path));
+  return child && child !== ".." && !child.startsWith(".." + sep);
+}
+
+function cleanEnvironment() {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("MEMORAX_CODE_") || key.startsWith("DSH_") ||
+      key.startsWith("DEEPSEEK_") || key.startsWith("NPM_CONFIG_") ||
+      ["CODEX_HOME", "CLAUDE_HOME", "CLAUDE_CONFIG_DIR",
+        "OPENCODE_CONFIG_DIR"].includes(key)) delete env[key];
+  }
+  return env;
+}
+
+async function exists(path) {
+  return stat(path).then(() => true, () => false);
+}
+
+async function readJson(path) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
+
+function progress(message) {
+  process.stderr.write("[dsh-npm-e2e] " + message + "\n");
+}
+
+async function cleanup() {
+  if (memoraxEntry && runtimeEnv && await exists(memoraxEntry)) {
+    await run(process.execPath, [memoraxEntry, "stop", "--home",
+      runtimeEnv.MEMORAX_CODE_HOME, "--clients", "dsh", "--json"],
+    repoRoot, runtimeEnv, { timeout: 30_000 }).catch(() => undefined);
+  }
+  if (alive(backendPid)) process.kill(backendPid, "SIGKILL");
+  await Promise.allSettled([llmServer?.close?.(), memoraxServer?.close?.()]);
+  if (stageRoot) await rm(stageRoot, { recursive: true, force: true });
+  if (isolatedRoot) await rm(isolatedRoot, { recursive: true, force: true });
+}

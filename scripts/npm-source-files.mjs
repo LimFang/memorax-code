@@ -15,6 +15,10 @@ export const npmMainSourceTrees = Object.freeze([
     destination: `lib/memorax-code-claude-adapter/${name}`,
   })),
   {
+    source: "packages/ts/memorax-code-dsh-adapter/src",
+    destination: "lib/memorax-code-dsh-adapter/src",
+  },
+  {
     source: "packages/ts/memorax-code-opencode-adapter/src",
     destination: "lib/memorax-code-opencode-adapter/src",
   },
