@@ -132,7 +132,7 @@ the current repository.
 | **Procedure reuse** | Records reusable task procedures and reminds future agents to apply them. |
 | **Background Repo Memory maintenance** | Automatically organizes repository structure, entry points, and history evidence in the background, then updates them according to policy to reduce repeated searching and summarization. |
 | **Active memory control** | Lets you search and add memory through the bundled MemoraX Code skill or the CLI. |
-| **Client integration** | Integrates with Codex, Claude Code, and OpenCode to trigger memory retrieval, reminders, and writeback. |
+| **Client integration** | Integrates with Codex, Claude Code, DeepSeek Harness, and OpenCode to trigger memory retrieval, reminders, and writeback. |
 | **Local visualization** | Uses the local Memory Viewer to summarize activity counts, retrieval, and writeback status. |
 
 ## Your Memory, Your Control
@@ -141,6 +141,12 @@ MemoraX is required for cloud-backed memory. Entering a Base User ID and API
 key after the installer's disclosure activates MemoraX search/add and the
 generated configuration's automatic writeback; there is no second writeback
 confirmation. Automatic retrieval remains off until explicitly enabled.
+
+Local trace capture is enabled by default for supported clients. Depending on
+client capabilities, retained traces under `MEMORAX_CODE_HOME` may contain
+prompts, responses, recalled memory, reminder text, and local paths. Use the
+[local trace settings](docs/configuration.md#local-traces) to switch to
+metadata-only capture or disable a client's trace.
 
 Active memory operations send their query or selected content to MemoraX.
 Automatic writeback sends selected user instructions and the matching final

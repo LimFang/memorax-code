@@ -431,6 +431,7 @@ assert config_sections == {
     "memory.writeback",
     "trace.claude",
     "trace.codex",
+    "trace.dsh",
     "trace.opencode",
 }
 assert 'output_language = "zh"' in config_text

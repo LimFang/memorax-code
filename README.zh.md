@@ -115,7 +115,7 @@ cd test-repo
 | **Procedure 自动复用** | 记录可复用的任务流程，并在后续任务中自动提醒 Agent 按流程执行。 |
 | **Repo Memory 后台整理** | 在后台整理仓库结构、代码入口和历史证据，并按策略自动更新，避免反复搜索和总结。 |
 | **主动记忆控制** | 使用内置的 MemoraX Code Skill 或 CLI，主动查找和添加记忆。 |
-| **客户端集成** | 与 Codex、Claude Code 和 OpenCode 集成，触发记忆检索、提醒和写入。 |
+| **客户端集成** | 与 Codex、Claude Code、DeepSeek Harness 和 OpenCode 集成，触发记忆检索、提醒和写入。 |
 | **本地可视化** | 通过本地 Memory Viewer 查看活动统计、召回与写入状态。 |
 
 ## 你的记忆，由你控制
@@ -123,6 +123,10 @@ cd test-repo
 云端记忆依赖 MemoraX。用户在阅读安装披露后输入 Base User ID 和 API Key，会启用
 MemoraX 搜索/添加，以及生成配置中的自动写回；不会再出现第二次写回确认。自动召回默认保持关闭，
 需要显式启用。
+
+受支持客户端的本地 trace 默认开启。根据客户端能力，`MEMORAX_CODE_HOME` 下保留的 trace
+可能包含用户指令、Agent 回复、召回的 Memory、提醒文本和本地路径。可通过
+[本地 trace 配置](docs/configuration.md#local-traces)改为仅记录元数据，或关闭对应客户端的 trace。
 
 主动记忆操作会将查询或选中的内容发送至 MemoraX。自动写回会从受信任工作区的任务中，发送经过
 选择的用户指令和对应的 Agent 最终回复，用于提取和保存记忆；它不会上传完整的本地客户端 trace
