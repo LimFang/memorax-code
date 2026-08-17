@@ -19,12 +19,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const OPT_IN_ENV = "MEMORAX_CODE_DSH_E2E";
 const TARBALL_ENV = "MEMORAX_CODE_DSH_E2E_MEMORAX_TARBALL";
+const VIEWER_HOLD_ENV = "MEMORAX_CODE_DSH_E2E_VIEWER_HOLD_MS";
 const DSH_VERSION = "0.1.0-rc.6";
 const DSH_PACKAGE = "@deepseek-ai/dsh";
 const DSH_MOCK_PACKAGE = "@deepseek-ai/dsh-llm-mock-server";
 const DSH_SPEC = DSH_PACKAGE + "@" + DSH_VERSION;
 const PNPM_SPEC = "pnpm@11.7.0";
 const RECALL = "MEMORAX_DSH_E2E_RECALL_7D49";
+const SAVED_MEMORY = "MEMORAX_DSH_E2E_SAVED_MEMORY_6C21";
 const USER_PROFILE = "MEMORAX_DSH_E2E_USER_PROFILE_C42A";
 const PROCEDURE_MEMORY = "MEMORAX_DSH_E2E_PROCEDURE_8F13";
 const MEMORY_REMINDER = "MemoraX Code reminder: proactively invoke /memorax-code";
@@ -48,6 +50,7 @@ const usage = [
   "",
   "Optional:",
   "  " + TARBALL_ENV + "=/absolute/path/to/memorax-code.tgz",
+  "  " + VIEWER_HOLD_ENV + "=60000 (hold the live Viewer for evidence capture)",
   "",
   "Runs an isolated real-client E2E against " + DSH_SPEC + ".",
   "DSH, Cordis, npm lifecycle scripts, Profiles, and the Backend are real;",
@@ -307,8 +310,14 @@ async function main() {
   assert.equal(firstReminderEvents[0].trace?.context_origin, "dsh-cordis-reminder");
   assert.deepEqual(firstReminderEvents[0].request?.triggers, ["cadence"]);
   assert.match(JSON.stringify(firstReminderEvents[0].response), new RegExp(MEMORY_REMINDER));
-  await writeFile(join(paths.workspace, ".repo_memory", "PROFILE.md"),
-    "# E2E auto-build dispatch sentinel\n");
+  const repoMemoryHead = (await run("git", ["rev-parse", "HEAD"], paths.workspace,
+    runtimeEnv)).stdout.trim();
+  await writeValidRepoMemoryFixture(paths.workspace, repoMemoryHead);
+  const repoMemoryValidation = JSON.parse((await run("python3", [
+    join(profilePackage, "skills", "memorax-code", "scripts", "validate_memory.py"),
+    paths.workspace,
+  ], paths.workspace, runtimeEnv)).stdout);
+  assert.equal(repoMemoryValidation.ok, true);
 
   progress("crashing and resuming one real DSH session to reconcile its interrupted Turn");
   const interruptedRunnerPath = join(headless, "memorax-interrupted-e2e-runner.mjs");
@@ -399,6 +408,34 @@ async function main() {
   assert.equal(requests("/v1/memories/search").at(-1)?.body?.query, RECOVERY_PROMPT);
   assertAdd(requests("/v1/memories/add").at(-1), RECOVERY_PROMPT);
 
+  progress("verifying restarted-task reconciliation and the live DSH Memory Viewer");
+  await waitFor(
+    () => requestsStartingWith("/v1/memories/add/status/").length >= 2,
+    "restarted DSH writeback reconciliation",
+  );
+  const viewerUrl = `http://127.0.0.1:${port}/memory-viewer`;
+  let viewerSummary;
+  await waitFor(async () => {
+    const response = await fetch(`${viewerUrl}/api/summary?client=dsh`);
+    if (!response.ok) return false;
+    viewerSummary = await response.json();
+    const adds = viewerSummary.activities?.filter((activity) => activity.kind === "add") ?? [];
+    return viewerSummary.summary?.turnCount === 4
+      && viewerSummary.summary?.searchOperationCount === 4
+      && viewerSummary.summary?.addOperationCount === 3
+      && viewerSummary.projects?.[0]?.repoMemory?.status === "ready"
+      && adds.filter((activity) => activity.status === "saved").length >= 2;
+  }, "live DSH Memory Viewer projection");
+  assertDshViewerSummary(viewerSummary, paths.workspace);
+  const viewerPage = await fetch(`${viewerUrl}?client=dsh`);
+  assert.equal(viewerPage.status, 200);
+  assert.match(await viewerPage.text(), /<option value="dsh">DeepSeek<\/option>/);
+  const viewerHoldMs = evidenceViewerHoldMilliseconds();
+  if (viewerHoldMs > 0) {
+    progress(`holding the verified DSH Memory Viewer for ${viewerHoldMs}ms at ${viewerUrl}?client=dsh`);
+    await delay(viewerHoldMs);
+  }
+
   progress("reconciling a Profile created after installation");
   await createProfile(dsh, "web", paths, runtimeEnv, false);
   const web = join(paths.dshHome, "profiles", "web");
@@ -455,6 +492,9 @@ async function main() {
     repoMemoryRuntimeHomeCanonical: true,
     interruptedTurnRecovered: true,
     backendCrashRecoveredCurrentGeneration: true,
+    restartedWritebackTasksReconciled: true,
+    dshMemoryViewerValidated: true,
+    dshMemoryViewerRepoMemoryReady: true,
     laterProfileReconciled: true,
     uninstallPreservedProfilesAndSessions: true,
   }, null, 2) + "\n");
@@ -564,6 +604,53 @@ function repoMemoryDispatchRecorderSource() {
     "  cwd: process.cwd(),",
     "  memoraxCodeHome: process.env.MEMORAX_CODE_HOME,",
     '}) + "\\n");',
+    "",
+  ].join("\n");
+}
+
+async function writeValidRepoMemoryFixture(workspace, head) {
+  const memory = join(workspace, ".repo_memory");
+  await Promise.all([
+    mkdir(join(memory, "raw"), { recursive: true }),
+    mkdir(join(memory, "resources"), { recursive: true }),
+  ]);
+  await Promise.all([
+    writeFile(join(memory, "PROFILE.md"), [
+      "---",
+      'schema: "repo_memory_profile.v0.1"',
+      `local_head: "${head}"`,
+      "---",
+      "",
+      "# Isolated DSH E2E Repo Memory",
+      "",
+    ].join("\n")),
+    writeFile(join(memory, "resources", "commits.md"), emptyRepoMemoryResource(
+      "repo_memory_commit_resource.v0.1", "git_commit_facets", "draft_resource",
+      "../raw/git-commits.json",
+    )),
+    writeFile(join(memory, "resources", "prs.md"), emptyRepoMemoryResource(
+      "repo_memory_pr_resource.v0.1", "provider_skipped_local_only",
+      "unavailable_local_only", "",
+    )),
+    writeFile(join(memory, "resources", "issues.md"), emptyRepoMemoryResource(
+      "repo_memory_issue_resource.v0.1", "provider_skipped_local_only",
+      "unavailable_local_only", "",
+    )),
+    writeFile(join(memory, "raw", "git-commits.json"), "[]\n"),
+  ]);
+}
+
+function emptyRepoMemoryResource(schema, source, trustState, rawSource) {
+  return [
+    "---",
+    `schema: "${schema}"`,
+    `source: "${source}"`,
+    "resource_count: 0",
+    `trust_state: "${trustState}"`,
+    `raw_source: "${rawSource}"`,
+    "---",
+    "",
+    `# ${schema}`,
     "",
   ].join("\n");
 }
@@ -698,7 +785,12 @@ async function startMemoraxMock() {
     } else if (request.method === "GET" &&
       request.url?.startsWith("/v1/memories/add/status/")) {
       sendJson(response, 200, {
-        success: true, data: { task_id: "add", status: "completed", data: null },
+        success: true,
+        data: {
+          task_id: "add",
+          status: "completed",
+          memories: [{ id: "memorax-dsh-e2e-saved", memory: SAVED_MEMORY }],
+        },
       });
     } else {
       sendJson(response, 404, { success: false });
@@ -733,6 +825,76 @@ async function requestBody(request) {
 
 function requests(path) {
   return memoraxServer.requests.filter((request) => request.path === path);
+}
+
+function requestsStartingWith(path) {
+  return memoraxServer.requests.filter((request) => request.path?.startsWith(path));
+}
+
+function assertDshViewerSummary(body, workspace) {
+  assert.equal(body.ok, true);
+  assert.equal(body.selectedClient, "dsh");
+  assert.deepEqual(body.availableClients, ["codex", "claude-code", "dsh", "opencode"]);
+  assert.equal(body.summary.turnCount, 4);
+  assert.equal(body.summary.searchOperationCount, 4);
+  assert.equal(body.summary.searchedMemoryCount, 4);
+  assert.equal(body.summary.addOperationCount, 3);
+  assert.ok(body.summary.addedMemoryCount >= 2);
+  assert.equal(body.summary.failedCount, 0);
+  const turns = body.activities.filter((activity) => activity.kind === "turn");
+  const adds = body.activities.filter((activity) => activity.kind === "add");
+  assert.equal(turns.length, 4);
+  assert.equal(turns.filter((activity) => activity.status === "interrupted").length, 1);
+  assert.equal(adds.length, 3);
+  assert.ok(adds.filter((activity) => activity.status === "saved").length >= 2);
+  assert.equal(adds.some((activity) => activity.status === "failed"), false);
+  assert.equal(body.projects.length, 1);
+  assert.deepEqual(body.projects[0].repoMemory, { status: "ready", reason: "usable" });
+
+  const serialized = JSON.stringify(body);
+  for (const privateValue of [
+    RECALL,
+    SAVED_MEMORY,
+    USER_PROFILE,
+    PROCEDURE_MEMORY,
+    REASONING,
+    REPLY,
+    FIRST_PROMPT,
+    CRASH_PROMPT,
+    RESUME_PROMPT,
+    RECOVERY_PROMPT,
+    MEMORAX_KEY,
+    DEEPSEEK_KEY,
+    workspace,
+  ]) {
+    assert.equal(serialized.includes(privateValue), false, `Viewer leaked private value: ${privateValue}`);
+  }
+  for (const field of [
+    "prompt",
+    "answer",
+    "query",
+    "results",
+    "details",
+    "sessionId",
+    "turnId",
+    "taskId",
+    "eventId",
+    "content",
+    "savedMemories",
+    "savedMemoryIds",
+  ]) {
+    assert.equal(serialized.includes(`"${field}"`), false, `Viewer exposed private field: ${field}`);
+  }
+}
+
+function evidenceViewerHoldMilliseconds() {
+  const raw = process.env[VIEWER_HOLD_ENV]?.trim();
+  if (!raw) return 0;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0 || value > 60_000) {
+    throw new Error(`${VIEWER_HOLD_ENV} must be an integer from 0 to 60000`);
+  }
+  return value;
 }
 
 async function packageRoot(prefix, packageName) {
