@@ -9,6 +9,8 @@ Use these instructions only to save, update, forget, or delete repository-scoped
 
 Store each part under its own authority when a request genuinely contains both. Do not persist current-task instructions or temporary plans.
 
+Keep file names, schema and script field names, type values, command options, and fixed Markdown headings in English. Write human-readable memory content in the user's current interaction language unless the user explicitly requests another storage language. This includes procedure titles and steps and user-profile descriptions, applicability, and exceptions. Preserve exact code identifiers, commands, paths, API names, and quoted literals without translation.
+
 ## Procedure Memory
 
 Before writing, ensure the repository root `.gitignore` contains `.repo_memory/`. Store each procedure topic in its own concise kebab-case file directly under:
@@ -48,7 +50,7 @@ Use when: reviewing changes in this repository.
 - Follow a more specific current user instruction first.
 ```
 
-Do not retain deleted text in tombstones, backups, inactive entries, or history files. Apply the same rule to superseded text.
+Delete only the topic file, section, or step the user explicitly identifies, and preserve unrelated content. Do not retain deleted text in tombstones, backups, inactive entries, or history files. Apply the same rule to superseded text.
 
 ## User-Profile Memory
 

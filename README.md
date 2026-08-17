@@ -124,6 +124,16 @@ the current repository.
 | **Personal&nbsp;Memory** | How should the agent communicate and collaborate with you? | User Profile preferences such as language, tone, explanation depth, and result format |
 | **Procedure&nbsp;Memory** | How should this kind of task be carried out? | Reusable steps, checklists, prerequisites, exceptions, and validation gates |
 
+Personal Memory and Procedure Memory stay in the current repository under
+`.repo_memory/`. When saved content already exists, MemoraX Code compares its
+meaning before writing: an equivalent request makes no change; a durable
+refinement or conflict updates the matching entry and removes the superseded
+wording; an invalid scope is corrected, or the entry is deleted only when it is
+wholly obsolete. An explicit forget request deletes only the named preference,
+procedure topic, section, or step and leaves unrelated memory unchanged.
+One-time task instructions do not change saved memory, and the Agent asks before
+writing when the durable intent or target is unclear.
+
 ## Product Capabilities
 
 | Capability | What it does |
