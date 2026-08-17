@@ -77,6 +77,7 @@ For MemoraX Code coding memory, use `memorax-cli` exactly as described by the se
 When explaining Memory Viewer, describe only `/memory-viewer`. It is a
 content-free local summary and must not expose conversation or memory text,
 session or turn identifiers, paths, or trace details. The page never queries
-MemoraX directly; client Hooks are the trace ingress authority.
+MemoraX directly; it projects client-qualified local activity and keeps each
+supported harness isolated.
 
 Never store secrets, credentials, `.env` content, sensitive personal data, raw transcripts, hidden tests, exact patches, temporary target commits, or unsafe destructive commands. Do not announce internal routing or reference loading.

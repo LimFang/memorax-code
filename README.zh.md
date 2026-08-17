@@ -94,8 +94,8 @@ cd test-repo
 > [!TIP]
 > 上述指令仅用于快速验证。正常使用时，无需主动调用 MemoraX Code Skill 添加记忆；
 > MemoraX Code 会根据当前仓库和任务在后台写入相关记忆，并引导 Agent 在需要时搜索。
-> 你可以通过 [Memory Viewer](http://127.0.0.1:8787/memory-viewer)
-> 查看不含正文的本地活动与状态。
+> 你可以在 [Memory Viewer](http://127.0.0.1:8787/memory-viewer) 中切换 Codex、
+> Claude Code、DeepSeek Harness 和 OpenCode，查看不含正文的本地活动与状态。
 
 ## 四类 Memory，各有清晰边界
 
