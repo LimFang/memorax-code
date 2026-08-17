@@ -44,7 +44,7 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
       return {
         ok: true,
         additionalContext: "Relevant shared memory",
-        repoMemoryWorktree: "/workspace/project",
+        repoMemoryWorktree: "/workspace/authorized-project",
       };
     },
     async recordSkillReminder(command) {
@@ -122,11 +122,11 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
     triggers: ["cadence"],
   }]);
   assert.deepEqual(personalContextCalls, [{
-    cwd: "/workspace/project",
+    cwd: "/workspace/authorized-project",
     includeProfile: true,
     includeProcedure: true,
   }]);
-  assert.deepEqual(scheduledRepos, ["/workspace/project"]);
+  assert.deepEqual(scheduledRepos, ["/workspace/authorized-project"]);
   assert.deepEqual(turnStarts, [{
     version: 1,
     client: "dsh",
@@ -283,7 +283,7 @@ test("restores User Profile after compaction and combines it with a cadence remi
     readFrom: async () => undefined,
   });
   registerMemoraxCodePlugin(ctx, pluginDependencies({
-    backendClient: reminderBackend(reminders),
+    backendClient: reminderBackend(reminders, "/workspace/authorized-project"),
     loadPersonalContext: async (input) => {
       personalContextCalls.push(input);
       return {
@@ -313,6 +313,7 @@ test("restores User Profile after compaction and combines it with a cadence remi
     includeProfile,
     includeProcedure,
   ]), [[true, true], [true, false], [true, true]]);
+  assert.equal(personalContextCalls.every(({ cwd }) => cwd === "/workspace/authorized-project"), true);
   assert.deepEqual(reminders.map((reminder) => reminder.triggers), [
     ["cadence"],
     ["post_compaction"],
@@ -453,7 +454,7 @@ test("loads personal context only after Backend authorizes a repository worktree
   assert.deepEqual(scheduledRepos, []);
 
   const authorized = await runTurnStartStep(ctx, session, 2, 10);
-  assert.equal(authorized.messages.at(-1).content[0].text, "User Profile\n\nProcedure Memory");
+  assertContext(authorized, "User Profile", "Procedure Memory");
   assert.deepEqual(personalContextCalls, [{
     cwd: "/workspace/authorized-project",
     includeProfile: true,
@@ -535,6 +536,16 @@ test("does not consume personal context when runtime authority is removed mid-st
   const pending = ctx.waterfall("agent/pre-step", preStep(session, 1, 1), enterDecision());
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(personalContextAttempts, 0);
+
+  const followerController = new AbortController();
+  const follower = ctx.waterfall("agent/pre-step", {
+    ...preStep(session, 1, 1),
+    signal: followerController.signal,
+  }, enterDecision());
+  await new Promise((resolve) => setImmediate(resolve));
+  followerController.abort(new Error("duplicate step cancelled"));
+  const cancelledFollower = await follower;
+  assert.equal(cancelledFollower.messages.length, 1);
 
   enabled = false;
   retrieval.resolve({ ok: true, repoMemoryWorktree: "/workspace/project" });
