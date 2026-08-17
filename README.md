@@ -111,8 +111,9 @@ the current repository.
 > The prompts above are only for quick verification. In normal use, you do not
 > need to invoke the MemoraX Code skill to add memory manually. It writes
 > relevant memory in the background and guides agents to search when useful.
-> You can view content-free local activity and status in the
-> [Memory Viewer](http://127.0.0.1:8787/memory-viewer).
+> In the [Memory Viewer](http://127.0.0.1:8787/memory-viewer), you can switch
+> among Codex, Claude Code, DeepSeek Harness, and OpenCode to view content-free
+> local activity and status.
 
 ## Four Clear Memory Boundaries
 
