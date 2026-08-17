@@ -291,7 +291,7 @@ const operation = args[3];
 const profileRoot = join(process.env.DSH_HOME, "profiles", profile);
 const manifestPath = join(profileRoot, "package.json");
 const adapterScope = join(profileRoot, "node_modules", "@memorax-code");
-const installedAdapterRoot = join(adapterScope, "dsh-adapter");
+const installedAdapterRoot = join(adapterScope, "dsh-memorax-code");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 if (operation === "add") {
   appendFileSync(process.env.FAKE_DSH_LOG, "add-begin enabled=" + enabled() + "\\n");
@@ -300,15 +300,15 @@ if (operation === "add") {
   rmSync(installedAdapterRoot, { recursive: true, force: true });
   mkdirSync(adapterScope, { recursive: true });
   cpSync(args[4].slice("file:".length), installedAdapterRoot, { recursive: true });
-  manifest.dependencies["@memorax-code/dsh-adapter"] = args[4];
-  if (!manifest.dsh.profile.bundles.includes("@memorax-code/dsh-adapter")) manifest.dsh.profile.bundles.push("@memorax-code/dsh-adapter");
+  manifest.dependencies["@memorax-code/dsh-memorax-code"] = args[4];
+  if (!manifest.dsh.profile.bundles.includes("@memorax-code/dsh-memorax-code")) manifest.dsh.profile.bundles.push("@memorax-code/dsh-memorax-code");
   appendFileSync(process.env.FAKE_DSH_LOG, "add-end enabled=" + enabled() + "\\n");
 } else if (operation === "remove") {
   appendFileSync(process.env.FAKE_DSH_LOG, "remove enabled=" + enabled() + "\\n");
   if (profile === process.env.FAKE_DSH_REMOVE_FAIL_PROFILE) process.exit(1);
   rmSync(installedAdapterRoot, { recursive: true, force: true });
-  delete manifest.dependencies["@memorax-code/dsh-adapter"];
-  manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((name) => name !== "@memorax-code/dsh-adapter");
+  delete manifest.dependencies["@memorax-code/dsh-memorax-code"];
+  manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((name) => name !== "@memorax-code/dsh-memorax-code");
 } else process.exit(2);
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\\n");
 `);
@@ -405,8 +405,8 @@ function readFileIfExists(path) {
 
 function profileHasAdapter(path) {
   const manifest = readJson(path);
-  return Object.hasOwn(manifest.dependencies, "@memorax-code/dsh-adapter")
-    && manifest.dsh.profile.bundles.includes("@memorax-code/dsh-adapter");
+  return Object.hasOwn(manifest.dependencies, "@memorax-code/dsh-memorax-code")
+    && manifest.dsh.profile.bundles.includes("@memorax-code/dsh-memorax-code");
 }
 
 function readJson(path) {

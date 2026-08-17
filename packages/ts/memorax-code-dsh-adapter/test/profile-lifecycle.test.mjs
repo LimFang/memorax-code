@@ -15,7 +15,10 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { withDshPluginLifecycleLock } from "../src/profile-lifecycle.mjs";
+import {
+  collectDshAdapterStatus,
+  withDshPluginLifecycleLock,
+} from "../src/profile-lifecycle.mjs";
 
 test("failed reconciliation restores the prior authority and removes newly installed Profiles", async (t) => {
   const fixture = await createReconciliationFixture(t);
@@ -65,18 +68,18 @@ test("failed reconciliation restores the prior authority and removes newly insta
   ]);
   const webManifest = JSON.parse(readFileSync(join(profilesRoot, "web", "package.json"), "utf8"));
   assert.equal(
-    webManifest.dependencies["@memorax-code/dsh-adapter"],
+    webManifest.dependencies["@memorax-code/dsh-memorax-code"],
     `file:${priorState.runtimeBundleRoot}`,
   );
   const alphaManifest = JSON.parse(readFileSync(join(profilesRoot, "alpha", "package.json"), "utf8"));
-  assert.equal(Object.hasOwn(alphaManifest.dependencies, "@memorax-code/dsh-adapter"), false);
-  assert.equal(alphaManifest.dsh.profile.bundles.includes("@memorax-code/dsh-adapter"), false);
+  assert.equal(Object.hasOwn(alphaManifest.dependencies, "@memorax-code/dsh-memorax-code"), false);
+  assert.equal(alphaManifest.dsh.profile.bundles.includes("@memorax-code/dsh-memorax-code"), false);
   assert.equal(existsSync(join(
     profilesRoot,
     "alpha",
     "node_modules",
     "@memorax-code",
-    "dsh-adapter",
+    "dsh-memorax-code",
   )), false);
   const generations = readdirSync(join(
     memoraxCodeHome,
@@ -144,7 +147,7 @@ test("failed rollback removal retains ownership of the residual Profile", async 
   assert.deepEqual(state.profiles, ["alpha", "web"]);
   const alphaManifest = JSON.parse(readFileSync(join(profilesRoot, "alpha", "package.json"), "utf8"));
   assert.equal(
-    alphaManifest.dependencies["@memorax-code/dsh-adapter"],
+    alphaManifest.dependencies["@memorax-code/dsh-memorax-code"],
     `file:${newRuntimeBundleRoot}`,
   );
 
@@ -182,8 +185,8 @@ test("quiesce publishes the inert authority without invoking DSH or removing Pro
   mkdirSync(join(dshHome, "profiles", "web"), { recursive: true });
   mkdirSync(join(memoraxCodeHome, "adapters", "dsh"), { recursive: true });
   writeFileSync(profileManifestPath, `${JSON.stringify({
-    dependencies: { "@memorax-code/dsh-adapter": `file:${runtimeBundleRoot}` },
-    dsh: { profile: { bundles: ["@memorax-code/dsh-adapter"] } },
+    dependencies: { "@memorax-code/dsh-memorax-code": `file:${runtimeBundleRoot}` },
+    dsh: { profile: { bundles: ["@memorax-code/dsh-memorax-code"] } },
   })}\n`);
   writeFileSync(statePath, `${JSON.stringify({
     version: 1,
@@ -222,7 +225,7 @@ test("quiesce publishes the inert authority without invoking DSH or removing Pro
   assert.deepEqual(state.profiles, ["web"]);
   assert.equal(
     JSON.parse(readFileSync(profileManifestPath, "utf8"))
-      .dependencies["@memorax-code/dsh-adapter"],
+      .dependencies["@memorax-code/dsh-memorax-code"],
     `file:${runtimeBundleRoot}`,
   );
 
@@ -234,7 +237,7 @@ test("quiesce publishes the inert authority without invoking DSH or removing Pro
     runDsh: (invocation) => {
       removalInvocation = invocation;
       const manifest = JSON.parse(readFileSync(profileManifestPath, "utf8"));
-      delete manifest.dependencies["@memorax-code/dsh-adapter"];
+      delete manifest.dependencies["@memorax-code/dsh-memorax-code"];
       manifest.dsh.profile.bundles = [];
       writeFileSync(profileManifestPath, `${JSON.stringify(manifest)}\n`);
       return { status: 0 };
@@ -266,6 +269,171 @@ test("quiesce preserves the not-managed lifecycle result", async (t) => {
     skipped: true,
     reason: "not_managed",
   });
+});
+
+test("restores the persisted DSH home when DSH_HOME is not configured", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "memorax-code-dsh-persisted-home-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const homeDir = join(root, "home");
+  const memoraxCodeHome = join(homeDir, ".memorax-code");
+  const dshHome = join(root, "persisted-dsh-home");
+  const adapterRoot = join(root, "adapter");
+  const runtimeBundleRoot = join(
+    memoraxCodeHome,
+    "adapters",
+    "dsh",
+    "runtime",
+    "generations",
+    "generation-1",
+  );
+  const statePath = join(memoraxCodeHome, "adapters", "dsh", "state.json");
+  writeProfile(join(dshHome, "profiles"), "web");
+  mkdirSync(dirname(statePath), { recursive: true });
+  writeJson(statePath, {
+    version: 1,
+    runtime: "dsh",
+    integration: "plugin",
+    enabled: false,
+    dshHome,
+    memoraxCodeHome,
+    adapterRoot,
+    runtimeBundleRoot,
+    memoraxCodeCommand: "memorax-code",
+    dshCommand: "dsh",
+    dshVersion: "0.1.0-rc.6",
+    profiles: ["web"],
+    updatedAt: "2026-08-15T12:00:00.000Z",
+  });
+
+  const report = await withDshPluginLifecycleLock({
+    adapterRoot,
+    env: {},
+    homeDir,
+    memoraxCodeHome,
+  }, (lifecycle) => lifecycle.status());
+
+  assert.equal(report.ok, true);
+  assert.equal(report.managed, true);
+  assert.deepEqual(report.profiles, [{ name: "web", exists: true, installed: false }]);
+});
+
+test("migrates the managed legacy package identity and restores it if reconciliation fails", async (t) => {
+  const fixture = await createReconciliationFixture(t);
+  const {
+    profilesRoot,
+    statePath,
+    initialOptions,
+    installAdapter,
+    removeAdapter,
+    priorState,
+  } = fixture;
+  const legacyPackageName = "@memorax-code/dsh-adapter";
+  const currentPackageName = "@memorax-code/dsh-memorax-code";
+
+  removeAdapter("web", currentPackageName);
+  const legacyRuntimeBundleRoot = join(dirname(priorState.runtimeBundleRoot), "legacy-generation");
+  cpSync(priorState.runtimeBundleRoot, legacyRuntimeBundleRoot, { recursive: true });
+  const legacyRuntimeManifestPath = join(legacyRuntimeBundleRoot, "package.json");
+  writeJson(legacyRuntimeManifestPath, {
+    ...JSON.parse(readFileSync(legacyRuntimeManifestPath, "utf8")),
+    name: legacyPackageName,
+  });
+  const legacyMetadataPath = join(legacyRuntimeBundleRoot, ".memorax-code-package.json");
+  writeJson(legacyMetadataPath, {
+    ...JSON.parse(readFileSync(legacyMetadataPath, "utf8")),
+    runtimeBundleRoot: legacyRuntimeBundleRoot,
+  });
+  installAdapter("web", legacyRuntimeBundleRoot);
+  writeProfile(profilesRoot, "headless");
+  installAdapter("headless", legacyRuntimeBundleRoot);
+  let legacyState = {
+    ...priorState,
+    runtimeBundleRoot: legacyRuntimeBundleRoot,
+    profiles: ["headless", "web"],
+    updatedAt: "2026-08-15T13:00:00.000Z",
+  };
+  writeJson(statePath, legacyState);
+
+  let failWeb = true;
+  const migrationOptions = {
+    ...initialOptions,
+    runDsh(invocation) {
+      if (invocation.args[0] === "--version") return { status: 0, stdout: "0.1.0-rc.6\n" };
+      const profileName = invocation.args[2];
+      const operation = invocation.args[3];
+      if (operation === "add") {
+        if (failWeb
+          && profileName === "web"
+          && invocation.args[4] !== `file:${legacyState.runtimeBundleRoot}`) {
+          return { status: 1 };
+        }
+        installAdapter(profileName, invocation.args[4].slice("file:".length));
+      } else {
+        removeAdapter(profileName, invocation.args[4]);
+      }
+      return { status: 0 };
+    },
+  };
+
+  const statusBeforeMigration = collectDshAdapterStatus(migrationOptions);
+  assert.equal(statusBeforeMigration.ok, true);
+  assert.equal(statusBeforeMigration.installed, true);
+  assert.equal(statusBeforeMigration.enabled, true);
+  const reactivated = await withDshPluginLifecycleLock(migrationOptions, (lifecycle) => {
+    const quiesced = lifecycle.quiesce();
+    assert.equal(quiesced.previouslyEnabled, true);
+    assert.equal(lifecycle.status().installed, true);
+    return lifecycle.activate();
+  });
+  assert.equal(reactivated.ok, true);
+  assert.equal(reactivated.enabled, true);
+  legacyState = JSON.parse(readFileSync(statePath, "utf8"));
+
+  const failed = await withDshPluginLifecycleLock(migrationOptions, (lifecycle) => (
+    lifecycle.ensureInstalled()
+  ));
+  assert.equal(failed.ok, false);
+  assert.deepEqual(failed.failedProfiles, [
+    { name: "web", reason: "dsh_command_failed", status: 1 },
+  ]);
+  assert.equal(failed.rollbackFailedProfiles, undefined);
+  assert.deepEqual(JSON.parse(readFileSync(statePath, "utf8")), legacyState);
+  for (const profileName of legacyState.profiles) {
+    const manifest = JSON.parse(readFileSync(
+      join(profilesRoot, profileName, "package.json"),
+      "utf8",
+    ));
+    assert.equal(Object.hasOwn(manifest.dependencies, legacyPackageName), true);
+    assert.equal(Object.hasOwn(manifest.dependencies, currentPackageName), false);
+  }
+
+  failWeb = false;
+  const migrated = await withDshPluginLifecycleLock(migrationOptions, (lifecycle) => (
+    lifecycle.ensureInstalled()
+  ));
+  assert.equal(migrated.ok, true);
+  assert.equal(migrated.installed, true);
+  assert.equal(migrated.enabled, true);
+  for (const profileName of legacyState.profiles) {
+    const profileRoot = join(profilesRoot, profileName);
+    const manifest = JSON.parse(readFileSync(join(profileRoot, "package.json"), "utf8"));
+    assert.equal(Object.hasOwn(manifest.dependencies, legacyPackageName), false);
+    assert.equal(Object.hasOwn(manifest.dependencies, currentPackageName), true);
+    assert.equal(existsSync(join(
+      profileRoot,
+      "node_modules",
+      ...legacyPackageName.split("/"),
+    )), false);
+    assert.equal(existsSync(join(
+      profileRoot,
+      "node_modules",
+      ...currentPackageName.split("/"),
+    )), true);
+  }
+  const status = await withDshPluginLifecycleLock(initialOptions, (lifecycle) => lifecycle.status());
+  assert.equal(status.ok, true);
+  assert.equal(status.installed, true);
+  assert.equal(status.enabled, true);
 });
 
 test("managed DSH discovery failures are not optional skips", async (t) => {
@@ -439,7 +607,7 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
       ], { cwd: profileRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
       assert.equal(install.status, 0, install.stderr);
       const manifest = JSON.parse(readFileSync(profileManifestPath, "utf8"));
-      manifest.dsh.profile.bundles = ["@memorax-code/dsh-adapter"];
+      manifest.dsh.profile.bundles = ["@memorax-code/dsh-memorax-code"];
       writeJson(profileManifestPath, manifest);
       return { status: 0 };
     },
@@ -465,7 +633,7 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
     "windows-cli-invocation.mjs",
   )), true);
   assert.deepEqual(packedFiles, ["package.json", ...adapterManifest.files].sort());
-  const installedRoot = join(profileRoot, "node_modules", "@memorax-code", "dsh-adapter");
+  const installedRoot = join(profileRoot, "node_modules", "@memorax-code", "dsh-memorax-code");
   const installed = await import(pathToFileURL(join(installedRoot, "src", "index.mjs")).href);
   assert.equal(installed.name, "memorax-code");
   let contextRead = false;
@@ -510,29 +678,30 @@ async function createReconciliationFixture(t) {
 
   const installAdapter = (profileName, runtimeBundleRoot) => {
     const profileRoot = join(profilesRoot, profileName);
-    const installedRoot = join(profileRoot, "node_modules", "@memorax-code", "dsh-adapter");
+    const packageName = JSON.parse(readFileSync(join(runtimeBundleRoot, "package.json"), "utf8")).name;
+    const installedRoot = join(profileRoot, "node_modules", ...packageName.split("/"));
     rmSync(installedRoot, { recursive: true, force: true });
     mkdirSync(dirname(installedRoot), { recursive: true });
     cpSync(runtimeBundleRoot, installedRoot, { recursive: true });
     const manifestPath = join(profileRoot, "package.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    manifest.dependencies["@memorax-code/dsh-adapter"] = `file:${runtimeBundleRoot}`;
-    if (!manifest.dsh.profile.bundles.includes("@memorax-code/dsh-adapter")) {
-      manifest.dsh.profile.bundles.push("@memorax-code/dsh-adapter");
+    manifest.dependencies[packageName] = `file:${runtimeBundleRoot}`;
+    if (!manifest.dsh.profile.bundles.includes(packageName)) {
+      manifest.dsh.profile.bundles.push(packageName);
     }
     writeJson(manifestPath, manifest);
   };
-  const removeAdapter = (profileName) => {
+  const removeAdapter = (profileName, packageName = "@memorax-code/dsh-memorax-code") => {
     const profileRoot = join(profilesRoot, profileName);
-    rmSync(join(profileRoot, "node_modules", "@memorax-code", "dsh-adapter"), {
+    rmSync(join(profileRoot, "node_modules", ...packageName.split("/")), {
       recursive: true,
       force: true,
     });
     const manifestPath = join(profileRoot, "package.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    delete manifest.dependencies["@memorax-code/dsh-adapter"];
+    delete manifest.dependencies[packageName];
     manifest.dsh.profile.bundles = manifest.dsh.profile.bundles
-      .filter((name) => name !== "@memorax-code/dsh-adapter");
+      .filter((name) => name !== packageName);
     writeJson(manifestPath, manifest);
   };
   const initialOptions = {

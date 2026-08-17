@@ -6,7 +6,7 @@ import { runRepoMemoryJob } from "../memorax-code-adapter-common/src/repo-memory
 import { evaluateRepository } from "../memorax-code-adapter-common/src/repo-memory/repo-memory-update-policy-evaluator.mjs";
 import { requireEnabledDshRuntime } from "../src/runtime-state.mjs";
 
-const ADAPTER_PACKAGE_NAME = "@memorax-code/dsh-adapter";
+const ADAPTER_PACKAGE_NAME = "@memorax-code/dsh-memorax-code";
 const HEADLESS_BUNDLE_NAME = "@deepseek-ai/dsh-headless";
 const hookDir = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = dirname(hookDir);

@@ -73,8 +73,8 @@ test("package-removal cleanup is prepared before shutdown and removes all client
       updatedAt: new Date().toISOString(),
     }, null, 2)}\n`);
     await writeFile(dshProfilePath, `${JSON.stringify({
-      dependencies: { "@memorax-code/dsh-adapter": `file:${dshAdapterRoot}` },
-      dsh: { profile: { bundles: ["@memorax-code/dsh-adapter"] } },
+      dependencies: { "@memorax-code/dsh-memorax-code": `file:${dshAdapterRoot}` },
+      dsh: { profile: { bundles: ["@memorax-code/dsh-memorax-code"] } },
     }, null, 2)}\n`);
     await writeFile(join(claudeHome, "settings.json"), `${JSON.stringify({
       extraKnownMarketplaces: {
@@ -107,8 +107,8 @@ const args = process.argv.slice(2);
 const profile = args[args.indexOf("--profile") + 1];
 const path = join(process.env.DSH_HOME, "profiles", profile, "package.json");
 const manifest = JSON.parse(readFileSync(path, "utf8"));
-delete manifest.dependencies["@memorax-code/dsh-adapter"];
-manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((name) => name !== "@memorax-code/dsh-adapter");
+delete manifest.dependencies["@memorax-code/dsh-memorax-code"];
+manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((name) => name !== "@memorax-code/dsh-memorax-code");
 writeFileSync(path, JSON.stringify(manifest, null, 2) + "\\n");
 `);
     await chmod(dshCommand, 0o755);
@@ -149,7 +149,7 @@ writeFileSync(path, JSON.stringify(manifest, null, 2) + "\\n");
       ["plugin", "marketplace", "remove", "memorax-code-local"],
     ]);
     assert.equal(
-      Object.hasOwn(JSON.parse(await readFile(dshProfilePath, "utf8")).dependencies, "@memorax-code/dsh-adapter"),
+      Object.hasOwn(JSON.parse(await readFile(dshProfilePath, "utf8")).dependencies, "@memorax-code/dsh-memorax-code"),
       false,
     );
   } finally {

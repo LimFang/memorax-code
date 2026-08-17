@@ -49,7 +49,12 @@ const { resolveWindowsCliInvocation } = await import(
 
 const STATE_VERSION = 1;
 const RUNTIME = "dsh";
-const ADAPTER_PACKAGE_NAME = "@memorax-code/dsh-adapter";
+const ADAPTER_PACKAGE_NAME = "@memorax-code/dsh-memorax-code";
+const LEGACY_ADAPTER_PACKAGE_NAMES = Object.freeze(["@memorax-code/dsh-adapter"]);
+const MANAGED_ADAPTER_PACKAGE_NAMES = Object.freeze([
+  ADAPTER_PACKAGE_NAME,
+  ...LEGACY_ADAPTER_PACKAGE_NAMES,
+]);
 const DSH_VERSION_TIMEOUT_MS = 10_000;
 const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
 const DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS = 600_000;
@@ -392,40 +397,69 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
   const failedProfiles = [];
   const mutatedProfiles = [];
   for (const profile of profiles) {
-    const before = inspectProfile(profile.name, profile.path);
-    if (before.status !== "valid") {
-      failedProfiles.push(before.status === "directory_missing"
+    let current = inspectProfile(profile.name, profile.path);
+    if (current.status !== "valid") {
+      failedProfiles.push(current.status === "directory_missing"
         ? { name: profile.name, reason: "profile_disappeared" }
         : profileManifestFailure(profile.name));
       continue;
     }
-    if (profileHasInstalledAdapter(before.profile, runtimeBundleRoot, pendingState)) {
-      installedProfiles.push(profile.name);
-      continue;
+    if (!profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)) {
+      const result = runDsh(options, paths, [
+        "plugin",
+        "--profile",
+        profile.name,
+        "add",
+        `file:${runtimeBundleRoot}`,
+      ], dshCommand);
+      current = inspectProfile(profile.name, profile.path);
+      if (previouslyManaged.has(profile.name)
+        || (current.status === "valid" && profileMentionsAdapter(current.profile))) {
+        mutatedProfiles.push(profile.name);
+      }
+      if (result.status !== 0
+        || result.error
+        || current.status !== "valid"
+        || !profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)) {
+        failedProfiles.push(profileMutationFailure(
+          profile.name,
+          result,
+          current,
+          "dsh_bundle_not_activated",
+        ));
+        continue;
+      }
     }
-    const result = runDsh(options, paths, [
-      "plugin",
-      "--profile",
-      profile.name,
-      "add",
-      `file:${runtimeBundleRoot}`,
-    ], dshCommand);
-    const after = inspectProfile(profile.name, profile.path);
-    if (previouslyManaged.has(profile.name)
-      || (after.status === "valid" && profileMentionsAdapter(after.profile))) {
+
+    if (LEGACY_ADAPTER_PACKAGE_NAMES.some((packageName) => (
+      profileMentionsPackage(current.profile, packageName)
+    ))) {
       mutatedProfiles.push(profile.name);
+      const cleanup = removeProfileAdapterPackages(
+        paths,
+        options,
+        profile.name,
+        LEGACY_ADAPTER_PACKAGE_NAMES,
+        dshCommand,
+      );
+      current = cleanup.profile;
+      if (cleanup.failure) {
+        failedProfiles.push(cleanup.failure);
+        continue;
+      }
     }
-    const installed = result.status === 0
-      && !result.error
-      && after.status === "valid"
-      && profileHasInstalledAdapter(after.profile, runtimeBundleRoot, pendingState);
-    if (installed) installedProfiles.push(profile.name);
-    else failedProfiles.push(profileMutationFailure(
-      profile.name,
-      result,
-      after,
-      "dsh_bundle_not_activated",
-    ));
+
+    if (current.status === "valid"
+      && profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)) {
+      installedProfiles.push(profile.name);
+    } else {
+      failedProfiles.push(profileMutationFailure(
+        profile.name,
+        { status: 0 },
+        current,
+        "dsh_bundle_not_activated",
+      ));
+    }
   }
 
   const finalProfiles = pendingState.profiles.map((name) => (
@@ -505,9 +539,18 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
 
 function rollbackDshPluginReconciliation(paths, options, state, mutatedProfiles, dshCommand) {
   const previouslyManaged = new Set(state.profiles);
+  const previousPackageName = runtimeAdapterPackageName(state.runtimeBundleRoot)
+    ?? ADAPTER_PACKAGE_NAME;
+  const replacementPackageNames = MANAGED_ADAPTER_PACKAGE_NAMES
+    .filter((packageName) => packageName !== previousPackageName);
   const rollbackFailedProfiles = [];
   const residualProfiles = [];
   const managedMutationResults = new Map();
+  const recordFailure = (failure) => {
+    if (!rollbackFailedProfiles.some(({ name }) => name === failure.name)) {
+      rollbackFailedProfiles.push(failure);
+    }
+  };
   for (const name of [...new Set(mutatedProfiles)]) {
     const profilePath = join(paths.profilesRoot, name);
     const before = inspectProfile(name, profilePath);
@@ -520,38 +563,39 @@ function rollbackDshPluginReconciliation(paths, options, state, mutatedProfiles,
         `file:${state.runtimeBundleRoot}`,
       ], dshCommand);
       managedMutationResults.set(name, result);
+      const restored = inspectProfile(name, profilePath);
+      if (result.status === 0
+        && !result.error
+        && restored.status === "valid"
+        && profileHasAdapter(restored.profile, previousPackageName)) {
+        const cleanup = removeProfileAdapterPackages(
+          paths,
+          options,
+          name,
+          replacementPackageNames,
+          dshCommand,
+        );
+        if (cleanup.failure) recordFailure(cleanup.failure);
+      }
       continue;
     }
     if (before.status === "directory_missing"
       || (before.status === "valid" && !profileMentionsAdapter(before.profile))) {
       continue;
     }
-    const result = runDsh(options, paths, [
-      "plugin",
-      "--profile",
+    const cleanup = removeProfileAdapterPackages(
+      paths,
+      options,
       name,
-      "remove",
-      ADAPTER_PACKAGE_NAME,
-    ], dshCommand);
-    const after = inspectProfile(name, profilePath);
-    if (after.status !== "directory_missing"
-      && (result.status !== 0
-        || result.error
-        || after.status !== "valid"
-        || profileMentionsAdapter(after.profile))) {
+      MANAGED_ADAPTER_PACKAGE_NAMES,
+      dshCommand,
+    );
+    if (cleanup.profile.status !== "directory_missing"
+      && (cleanup.profile.status !== "valid"
+        || profileMentionsAdapter(cleanup.profile.profile))) {
       residualProfiles.push(name);
     }
-    if (result.status !== 0
-      || result.error
-      || (after.status !== "directory_missing"
-        && (after.status !== "valid" || profileMentionsAdapter(after.profile)))) {
-      rollbackFailedProfiles.push(profileMutationFailure(
-        name,
-        result,
-        after,
-        "dsh_bundle_not_removed",
-      ));
-    }
+    if (cleanup.failure) recordFailure(cleanup.failure);
   }
   const rollbackState = residualProfiles.length > 0
     ? {
@@ -568,11 +612,18 @@ function rollbackDshPluginReconciliation(paths, options, state, mutatedProfiles,
   for (const name of state.profiles) {
     const profile = inspectProfile(name, join(paths.profilesRoot, name));
     if (profile.status === "valid"
-      && profileHasInstalledAdapter(profile.profile, state.runtimeBundleRoot, verificationState)) {
+      && profileHasInstalledAdapter(
+        profile.profile,
+        state.runtimeBundleRoot,
+        verificationState,
+      )
+      && !replacementPackageNames.some((packageName) => (
+        profileMentionsPackage(profile.profile, packageName)
+      ))) {
       continue;
     }
     authorityRestored = false;
-    rollbackFailedProfiles.push(profileMutationFailure(
+    recordFailure(profileMutationFailure(
       name,
       managedMutationResults.get(name) ?? { status: 0 },
       profile,
@@ -661,24 +712,15 @@ function disableDshPluginInstallationUnlocked(paths, options, removeState) {
       removedProfiles.push(name);
       continue;
     }
-    const result = runDsh(
-      options,
+    const cleanup = removeProfileAdapterPackages(
       paths,
-      ["plugin", "--profile", name, "remove", ADAPTER_PACKAGE_NAME],
+      options,
+      name,
+      MANAGED_ADAPTER_PACKAGE_NAMES,
       dshCommand,
     );
-    const after = inspectProfile(name, before.profile.path);
-    const removed = result.status === 0
-      && !result.error
-      && (after.status === "directory_missing"
-        || (after.status === "valid" && !profileMentionsAdapter(after.profile)));
-    if (removed) removedProfiles.push(name);
-    else failedProfiles.push(profileMutationFailure(
-      name,
-      result,
-      after,
-      "dsh_bundle_not_removed",
-    ));
+    if (cleanup.failure) failedProfiles.push(cleanup.failure);
+    else removedProfiles.push(name);
   }
 
   if (failedProfiles.length > 0) {
@@ -710,6 +752,48 @@ function disableDshPluginInstallationUnlocked(paths, options, removeState) {
     managed: !removeState,
     removedProfiles,
   };
+}
+
+function removeProfileAdapterPackages(paths, options, name, packageNames, dshCommand) {
+  const profilePath = join(paths.profilesRoot, name);
+  let profile = inspectProfile(name, profilePath);
+  let failure;
+  for (const packageName of packageNames) {
+    if (profile.status === "directory_missing") break;
+    if (profile.status !== "valid") {
+      failure ??= profileManifestFailure(name);
+      break;
+    }
+    if (!profileMentionsPackage(profile.profile, packageName)) continue;
+    const result = runDsh(
+      options,
+      paths,
+      ["plugin", "--profile", name, "remove", packageName],
+      dshCommand,
+    );
+    profile = inspectProfile(name, profilePath);
+    if (result.status !== 0
+      || result.error
+      || (profile.status !== "directory_missing"
+        && (profile.status !== "valid"
+          || profileMentionsPackage(profile.profile, packageName)))) {
+      failure ??= profileMutationFailure(
+        name,
+        result,
+        profile,
+        "dsh_bundle_not_removed",
+      );
+    }
+  }
+  if (!failure
+    && profile.status !== "directory_missing"
+    && (profile.status !== "valid"
+      || packageNames.some((packageName) => (
+        profileMentionsPackage(profile.profile, packageName)
+      )))) {
+    failure = profileMutationFailure(name, { status: 0 }, profile, "dsh_bundle_not_removed");
+  }
+  return { profile, failure };
 }
 
 function materializeRuntimeBundle(paths, metadata) {
@@ -826,7 +910,7 @@ function resolvePaths(options) {
   const runtimeRoot = join(memoraxCodeHome, "adapters", RUNTIME, "runtime", "generations");
   const configuredDshHome = options.dshHome ?? nonEmpty(env.DSH_HOME);
   const dshHome = configuredDshHome === undefined
-    ? persistedDshHome({ statePath, memoraxCodeHome, adapterRoot }, homeDir)
+    ? persistedDshHome({ statePath, memoraxCodeHome, adapterRoot, runtimeRoot }, homeDir)
       ?? resolveHomePath(join(homeDir, ".dsh"), homeDir)
     : resolveHomePath(configuredDshHome, homeDir);
   return {
@@ -1061,33 +1145,45 @@ function inspectProfile(name, path) {
 }
 
 function profileMentionsAdapter(profile) {
-  return Boolean(profile
-    && (Object.hasOwn(profile.dependencies, ADAPTER_PACKAGE_NAME)
-      || profile.bundles.includes(ADAPTER_PACKAGE_NAME)));
+  return MANAGED_ADAPTER_PACKAGE_NAMES.some((packageName) => (
+    profileMentionsPackage(profile, packageName)
+  ));
 }
 
-function profileHasAdapter(profile) {
+function profileMentionsPackage(profile, packageName) {
   return Boolean(profile
-    && Object.hasOwn(profile.dependencies, ADAPTER_PACKAGE_NAME)
-    && profile.bundles.includes(ADAPTER_PACKAGE_NAME));
+    && (Object.hasOwn(profile.dependencies, packageName)
+      || profile.bundles.includes(packageName)));
 }
 
-function profileHasInstalledAdapter(profile, runtimeBundleRoot, state) {
-  if (!profileHasAdapter(profile) || !state || !nonEmpty(runtimeBundleRoot)) return false;
+function profileHasAdapter(profile, packageName = ADAPTER_PACKAGE_NAME) {
+  return Boolean(profile
+    && Object.hasOwn(profile.dependencies, packageName)
+    && profile.bundles.includes(packageName));
+}
+
+function profileHasInstalledAdapter(
+  profile,
+  runtimeBundleRoot,
+  state,
+) {
+  if (!state || !nonEmpty(runtimeBundleRoot)) return false;
   try {
     const sourceManifest = readJsonObject(join(runtimeBundleRoot, "package.json"));
-    if (sourceManifest?.name !== ADAPTER_PACKAGE_NAME
+    const packageName = sourceManifest?.name;
+    if (!MANAGED_ADAPTER_PACKAGE_NAMES.includes(packageName)
+      || !profileHasAdapter(profile, packageName)
       || !nonEmpty(sourceManifest.version)) return false;
 
     const requireFromProfile = createRequire(join(profile.path, "package.json"));
-    const packageRoot = (requireFromProfile.resolve.paths(ADAPTER_PACKAGE_NAME) ?? [])
-      .map((searchPath) => join(searchPath, ADAPTER_PACKAGE_NAME))
+    const packageRoot = (requireFromProfile.resolve.paths(packageName) ?? [])
+      .map((searchPath) => join(searchPath, packageName))
       .find((candidate) => existsSync(join(candidate, "package.json")));
     if (!packageRoot) return false;
 
     const installedManifest = readJsonObject(join(packageRoot, "package.json"));
     const sourcePatch = sourceManifest?.dsh?.bundle?.patch;
-    if (installedManifest?.name !== ADAPTER_PACKAGE_NAME
+    if (installedManifest?.name !== packageName
       || installedManifest.version !== sourceManifest.version
       || installedManifest.main !== sourceManifest.main
       || !isDeepStrictEqual(installedManifest.exports, sourceManifest.exports)
@@ -1096,7 +1192,7 @@ function profileHasInstalledAdapter(profile, runtimeBundleRoot, state) {
       || installedManifest?.dsh?.bundle?.patch !== sourcePatch) return false;
 
     readFileSync(join(packageRoot, sourcePatch), "utf8");
-    readFileSync(requireFromProfile.resolve(ADAPTER_PACKAGE_NAME), "utf8");
+    readFileSync(requireFromProfile.resolve(packageName), "utf8");
     const authority = requireDshRuntimeAuthority(packageRoot);
     return authority.enabled === state.enabled
       && authority.sourceAdapterRoot === resolve(state.adapterRoot)
@@ -1119,6 +1215,15 @@ function readJsonObject(path) {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value
     : undefined;
+}
+
+function runtimeAdapterPackageName(runtimeBundleRoot) {
+  try {
+    const packageName = readJsonObject(join(runtimeBundleRoot, "package.json"))?.name;
+    return MANAGED_ADAPTER_PACKAGE_NAMES.includes(packageName) ? packageName : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function projectProfileStatus(
