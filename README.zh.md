@@ -67,16 +67,16 @@ Base User ID、偏好语言和 API Key；Codex 用户还需按提示完成 Hook 
 
 ### 体验跨会话记忆
 
-克隆示例仓库，并在项目目录中打开 Codex、Claude Code 或 OpenCode：
+克隆示例仓库，并在项目目录中打开 Codex、Claude Code、DeepSeek Harness 或 OpenCode：
 
 ```bash
 git clone https://github.com/SWE-agent/test-repo.git
 cd test-repo
 ```
 
-在 Codex 中使用 `$memorax-code`，在 Claude Code 中使用 `/memorax-code` 调用该 Skill。
-在 OpenCode 中，直接让 Agent 使用名为 `memorax-code` 的 Skill。下面的指令使用产品名称，三个客户端
-均可直接理解。
+在 Codex 中使用 `$memorax-code`，在 Claude Code 或 DeepSeek Harness 中使用 `/memorax-code`
+调用该 Skill。在 OpenCode 中，直接让 Agent 使用名为 `memorax-code` 的 Skill。下面的指令使用产品名称，
+四个客户端均可直接理解。
 
 在同一个会话中依次发送以下指令：
 

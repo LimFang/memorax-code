@@ -221,14 +221,15 @@ async function collectRecallContext(options) {
 async function collectPersonalContext(options) {
   if (!options.cwd) return undefined;
   const state = personalContextState(options.personalContexts, options.session);
-  const firstObservation = !state.observed;
+  const firstObservation = state.firstObservedTurn === undefined;
+  const cadenceTurn = firstObservation ? 1 : options.turn - state.firstObservedTurn + 1;
   const compactionGeneration = state.compactionGeneration;
   const includeProfile = firstObservation
     || state.appliedCompactionGeneration < compactionGeneration;
   const includeProcedure = firstObservation
     || (options.step === 1
       && state.lastProcedureTurn !== options.turn
-      && options.isReminderDue(options.turn, options.intervalTurns));
+      && options.isReminderDue(cadenceTurn, options.intervalTurns));
   if (!includeProfile && !includeProcedure) return undefined;
   if (state.lastAttempt?.turn === options.turn
     && state.lastAttempt?.compactionGeneration === compactionGeneration) return undefined;
@@ -246,7 +247,7 @@ async function collectPersonalContext(options) {
       profileContext: nonEmptyString(result?.profileContext),
       procedureContext: nonEmptyString(result?.procedureContext),
       commit() {
-        state.observed = true;
+        if (firstObservation) state.firstObservedTurn = options.turn;
         if (includeProfile) state.appliedCompactionGeneration = compactionGeneration;
         if (includeProcedure) state.lastProcedureTurn = options.turn;
       },
@@ -352,7 +353,6 @@ function personalContextState(personalContexts, session) {
   let state = personalContexts.get(session);
   if (!state) {
     state = {
-      observed: false,
       compactionGeneration: 0,
       appliedCompactionGeneration: 0,
     };

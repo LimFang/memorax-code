@@ -191,7 +191,7 @@ test("retrieves once and writes the exact durable top-level DSH Turn", async () 
   assert.equal(personalContextCalls.length, 2, "an ordinary user fork gets first-observation context");
 });
 
-test("injects Procedure Memory on the native Turn cadence without repeating User Profile", async () => {
+test("anchors Procedure Memory cadence to the first observed Turn without repeating User Profile", async () => {
   const personalContextCalls = [];
   const session = topLevelSession();
   const ctx = mockContext({
@@ -208,16 +208,16 @@ test("injects Procedure Memory on the native Turn cadence without repeating User
     },
   }));
 
-  const turnOne = await runTurnStartStep(ctx, session, 1, 0);
-  assert.equal(turnOne.messages.at(-1).content[0].text, "User Profile\n\nProcedure Memory");
+  const turnFive = await runTurnStartStep(ctx, session, 5, 0);
+  assert.equal(turnFive.messages.at(-1).content[0].text, "User Profile\n\nProcedure Memory");
 
-  const turnTwo = await runTurnStartStep(ctx, session, 2, 10);
-  assert.equal(turnTwo.messages.length, 1);
+  const turnSix = await runTurnStartStep(ctx, session, 6, 10);
+  assert.equal(turnSix.messages.length, 1);
 
-  const turnSix = await runTurnStartStep(ctx, session, 6, 20);
-  assert.equal(turnSix.messages.at(-1).content[0].text, "Procedure Memory");
-  const duplicateTurnSix = await ctx.waterfall("agent/pre-step", preStep(session, 6, 1), enterDecision());
-  assert.equal(duplicateTurnSix.messages.length, 1);
+  const turnTen = await runTurnStartStep(ctx, session, 10, 20);
+  assert.equal(turnTen.messages.at(-1).content[0].text, "Procedure Memory");
+  const duplicateTurnTen = await ctx.waterfall("agent/pre-step", preStep(session, 10, 1), enterDecision());
+  assert.equal(duplicateTurnTen.messages.length, 1);
 
   assert.deepEqual(personalContextCalls, [
     {
