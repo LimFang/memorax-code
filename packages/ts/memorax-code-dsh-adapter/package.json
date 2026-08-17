@@ -4,6 +4,31 @@
   "private": true,
   "type": "module",
   "description": "DeepSeek Harness native memory adapter for MemoraX Code.",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    ".memorax-code-package.json",
+    "cordis.patch.yml",
+    "src/index.mjs",
+    "src/backend-client.mjs",
+    "src/dsh-message.mjs",
+    "src/dsh-version.mjs",
+    "src/http-client.mjs",
+    "src/plugin.mjs",
+    "src/protocol.mjs",
+    "src/runtime-state.mjs",
+    "memorax-code-adapter-common/src/backend-connection.mjs",
+    "memorax-code-adapter-common/src/hooks/ensure-backend-runner.mjs",
+    "memorax-code-adapter-common/src/repo-memory/repo-memory-job-context.mjs",
+    "memorax-code-adapter-common/src/runtime-record.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "scripts": {
     "test": "node --test test/*.test.mjs"
   }
