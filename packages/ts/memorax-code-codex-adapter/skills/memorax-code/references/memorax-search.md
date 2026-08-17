@@ -21,8 +21,12 @@ Search when prior coding memory may change localization, implementation, review,
 - a request for a previous fix, failed approach, coding convention, design decision, or reusable lesson;
 - implementation, review, planning, API, schema, parser, workflow-contract, or migration work where prior project guidance may matter;
 - explicit instructions to follow previous agreements or remembered engineering conventions.
+- a request to recover, verify, or apply prior project discussions, experiment results, saved memory, earlier decisions, previous changes, or historical constraints, unless the needed facts are fully present in the current visible context.
+- a requested action that depends on prior project state, results, fixes, constraints, or plans when the exact evidence needed is not explicitly present in the current user-provided material.
 
-Skip search for simple current-code facts, tiny edits, typo fixes, one-shot commands, or behavior directly established by a clear live source.
+Skip search for simple current-code facts, tiny edits, typo fixes, one-shot commands, or behavior directly established by a clear live source. Do not skip merely by saying the current conversation is sufficient or a relevant result was already retrieved; skip only when the current user message, selected text, or nearby visible context fully contains the facts needed for the answer. A nearby summary is sufficient for explaining that summary, but not automatically sufficient for diagnosing a regression, continuing an experiment, reviewing consistency with prior behavior, or claiming a complete historical account. A word such as "previous", "earlier", "remember", or "history" is not enough by itself to search when the visible context already contains the requested prior facts.
+
+Do not search merely because a prior result or fix might exist. For an exact calculation from currently available data, or a current screenshot or reproducible symptom with sufficient live evidence, use the current evidence first. Search only when the user request or visible context establishes a concrete historical dependency.
 
 Choose the closest coding scene to shape the query:
 
