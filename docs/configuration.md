@@ -38,12 +38,13 @@ are not a compatibility contract.
 
 ## New configuration
 
-The generated template selects all three clients, disables automatic retrieval,
-enables automatic writeback, sets the preferred language to Chinese (`zh`),
-uses a five-turn skill reminder and the adaptive repository-update policy, and
-enables content-bearing local traces for all three clients. npm installation may
-narrow `[clients]` to clients detected on the host. The tables below list all
-fallbacks, including tuning fields omitted from the generated file.
+The generated template selects all four client integrations, disables automatic
+retrieval, enables automatic writeback, sets the preferred language to Chinese
+(`zh`), uses a five-turn skill reminder and the adaptive repository-update
+policy, and enables content-bearing local traces for Codex, Claude Code, and
+OpenCode. npm installation may narrow `[clients]` to clients detected on the
+host. The tables below list all fallbacks, including tuning fields omitted from
+the generated file.
 
 On POSIX systems MemoraX Code creates `$MEMORAX_CODE_HOME` with mode `0700`
 and a new `config.toml` with mode `0600`. Windows relies on the current user's
@@ -51,18 +52,24 @@ filesystem ACLs.
 
 ## Client selection
 
-If `[clients]` is absent, lifecycle commands select Codex, Claude Code, and
-OpenCode. If it is present, `codex`, `claude`, and `opencode` are boolean fields
-and an omitted client is disabled. The command-line override accepts a
+If `[clients]` is absent, lifecycle commands select Codex, Claude Code, DSH,
+and OpenCode. If it is present, `codex`, `claude`, `dsh`, and `opencode` are
+boolean fields. Omitted `codex`, `claude`, or `opencode` values are disabled;
+an omitted `dsh` value remains enabled so configurations written before DSH
+support can discover an existing local Harness. Set `dsh = false` explicitly
+to disable that integration. The command-line override accepts a
 comma-separated subset:
 
 ```text
---clients codex|claude|opencode|<comma-separated subset>|all|none
+--clients codex|claude|dsh|opencode|<comma-separated subset>|all|none
 ```
 
 A normal npm install or reinstall refreshes `[clients]` from the available
 clients detected at that time. OpenCode is available when its explicit, XDG,
 or default configuration directory exists, or when `opencode` is on `PATH`.
+DSH is available when at least one valid Profile exists under
+`$DSH_HOME/profiles`; `DSH_HOME` defaults to `~/.dsh`. An explicit
+`[clients].dsh = false` is preserved.
 Update-mode postinstall runs preserve enabled
 clients and also probe each disabled client. An interactive update offers each
 runnable disabled integration for activation with a default of yes. Declining
@@ -73,8 +80,29 @@ enables Codex, it requests initial Hook activation after the client-selection
 prompt.
 
 Client selection controls managed client-integration lifecycle only. It does
-not change Codex, Claude Code, or OpenCode provider settings. `--clients none`
-runs the Backend without managing a client integration.
+not change Codex, Claude Code, DSH, or OpenCode provider settings.
+`--clients none` runs the Backend without managing a client integration.
+
+## DeepSeek Harness integration paths
+
+DSH Profiles are discovered under:
+
+```text
+$DSH_HOME/profiles/<profile-name>/
+```
+
+`DSH_HOME` defaults to `~/.dsh`. The managed ownership record lives at
+`$MEMORAX_CODE_HOME/adapters/dsh/state.json`. Runtime packages are materialized
+under `$MEMORAX_CODE_HOME/adapters/dsh/runtime/generations/` and installed into
+Profiles through DSH's native plugin command. The globally installed npm
+package remains immutable; do not copy or edit the generated state or runtime
+directories by hand.
+
+MemoraX Code is tested with DSH `0.1.0-rc.6`. Other valid semantic versions are
+accepted but appear as untested in status output; compatibility is not
+guaranteed. An unavailable or malformed `dsh --version` result fails Profile
+reconciliation when a Profile exists. Run `memorax-code start --clients dsh`
+after changing `DSH_HOME`, DSH, or its Profiles.
 
 ## OpenCode integration paths
 
@@ -309,6 +337,7 @@ memorax-cli status
 memorax-cli status --json
 memorax-code-codex doctor
 memorax-code-claude doctor
+memorax-code status --clients dsh
 memorax-code-opencode doctor
 ```
 

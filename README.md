@@ -35,8 +35,8 @@ Coding agents are good at the task in front of them, but a new session often
 starts without the architecture, failed attempts, repository rules, or working
 preferences established before it.
 
-MemoraX Code gives Codex, Claude Code, and OpenCode a shared memory layer for
-that context.
+MemoraX Code gives Codex, Claude Code, DeepSeek Harness, and OpenCode a shared
+memory layer for that context.
 It can recall prior engineering knowledge, capture reusable lessons from
 completed work, maintain repository knowledge, and carry your procedures and
 preferences into future sessions.
@@ -47,8 +47,8 @@ and validation sooner.
 
 ## Quick Start
 
-Prepare Node.js 24+ and at least one of Codex, Claude Code, or OpenCode. Python
-3 is required for Repo Memory operations.
+Prepare Node.js 24+ and at least one of Codex, Claude Code, DeepSeek Harness,
+or OpenCode. Python 3 is required for Repo Memory operations.
 
 ### Install and Connect
 
@@ -65,11 +65,12 @@ npm install -g @memorax/memorax-code --foreground-scripts
 ```
 
 Keep `--foreground-scripts` so the complete setup remains visible. The
-installer automatically detects available Codex, Claude Code, and OpenCode
-clients and connects the clients it finds. Follow the prompts to enter your
-Base User ID, preferred language, and API key. Codex users must also approve
-Hook activation and trust when prompted. Restart or refresh every detected
-client after installation before starting a new session.
+installer automatically detects available Codex, Claude Code, DeepSeek
+Harness, and OpenCode installations and connects those it finds. Follow the
+prompts to enter your Base User ID, preferred language, and API key. Codex
+users must also approve Hook activation and trust when prompted. Restart or
+refresh every detected coding agent after installation before starting a new
+session.
 
 If setup is skipped or cannot prompt, the package remains installed but
 MemoraX-backed search, retrieval, and writeback remain unavailable.
@@ -163,8 +164,8 @@ memorax-code update
 ```
 
 The command follows the installed release channel and preserves configuration.
-Restart or refresh Codex, Claude Code, and OpenCode when a release changes
-plugin assets or skills.
+Restart or refresh Codex, Claude Code, DeepSeek Harness, and OpenCode when a
+release changes installed integration assets.
 
 ## Uninstall
 
