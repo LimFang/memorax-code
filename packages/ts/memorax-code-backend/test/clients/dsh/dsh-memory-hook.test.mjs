@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createBackendState } from "../../../dist/app/state.js";
 import { createBackendServer } from "../../../dist/server.js";
+import { clearMemoryViewerEvents } from "../../../dist/viewer/store.js";
 import { listen } from "../../support/helpers.mjs";
 import { createHttpBackendClient } from "../../../../memorax-code-dsh-adapter/src/http-client.mjs";
 import {
@@ -176,6 +177,27 @@ test("Backend runs DSH Search, normalized Trace, and Add from one native Turn in
     assert.equal(traceEvents[4].trace.context_origin, "dsh-session-event-log");
     assert.equal(traceText.includes("private tool result"), false);
 
+    const viewerRequest = { headers: { authorization: "Bearer backend-token" } };
+    const codexViewer = await originalFetch(`${url}/memory-viewer/api/summary`, viewerRequest);
+    assert.equal(codexViewer.status, 200);
+    const codexViewerBody = await codexViewer.json();
+    assert.equal(codexViewerBody.summary.searchOperationCount, 0);
+    assert.equal(codexViewerBody.summary.addOperationCount, 0);
+
+    const dshViewer = await originalFetch(
+      `${url}/memory-viewer/api/summary?client=dsh`,
+      viewerRequest,
+    );
+    assert.equal(dshViewer.status, 200);
+    const dshViewerBody = await dshViewer.json();
+    assert.equal(dshViewerBody.summary.turnCount, 1);
+    assert.equal(dshViewerBody.summary.searchOperationCount, 1);
+    assert.equal(dshViewerBody.summary.searchedMemoryCount, 1);
+    assert.equal(dshViewerBody.summary.addOperationCount, 1);
+    assert.equal(dshViewerBody.summary.addedMemoryCount, 0);
+    assert.equal(dshViewerBody.summary.processingCount, 1);
+    assert.equal(dshViewerBody.activities.length, 3);
+
     const currentTurn = JSON.parse(await readFile(join(
       sessionHome,
       "debug",
@@ -290,7 +312,7 @@ test("Backend recovers DSH Trace, writeback, and task status across restarts", a
       }), { status: 200, headers: { "content-type": "application/json" } });
     };
     thirdServer = createBackendServer(createBackendState("127.0.0.1", { sessionHome }));
-    await listen(thirdServer);
+    const thirdUrl = await listen(thirdServer);
     await waitForFile(
       traceEventsPath,
       /"type":"memory_writeback_status"/,
@@ -326,6 +348,58 @@ test("Backend recovers DSH Trace, writeback, and task status across restarts", a
       ".current-turn.json",
     ), "utf8"));
     assert.equal(currentTurn.turn_state, "completed");
+
+    clearMemoryViewerEvents();
+    const viewerResponse = await originalFetch(
+      `${thirdUrl}/memory-viewer/api/summary?client=dsh`,
+    );
+    assert.equal(viewerResponse.status, 200);
+    const viewerText = await viewerResponse.text();
+    const viewer = JSON.parse(viewerText);
+    assert.equal(viewer.summary.turnCount, 1);
+    assert.equal(viewer.summary.searchOperationCount, 0);
+    assert.equal(viewer.summary.addOperationCount, 1);
+    assert.equal(viewer.summary.addedMemoryCount, 1);
+    assert.equal(viewer.summary.processingCount, 0);
+    assert.equal(viewer.activities.length, 2);
+    assert.deepEqual(
+      viewer.activities.map(({ kind, status, count }) => ({ kind, status, count })),
+      [
+        { kind: "add", status: "saved", count: 1 },
+        { kind: "turn", status: "completed", count: null },
+      ],
+    );
+    for (const privateValue of [
+      "Implement the DSH adapter.",
+      "I will inspect.",
+      "The adapter is ready.",
+      "Reconciled DSH memory.",
+      interval.sessionId,
+      "hook-memory-add",
+      "dsh-reconciled-memory",
+      traceEvents[3].event_id,
+      traceEvents[4].event_id,
+      TEST_WORKSPACE,
+    ]) {
+      assert.equal(viewerText.includes(privateValue), false);
+    }
+    for (const field of [
+      "prompt",
+      "answer",
+      "query",
+      "results",
+      "details",
+      "sessionId",
+      "turnId",
+      "taskId",
+      "eventId",
+      "content",
+      "error",
+      "savedMemories",
+      "savedMemoryIds",
+    ]) {
+      assert.equal(viewerText.includes(`"${field}"`), false);
+    }
   } finally {
     await thirdServer?.shutdown();
     await secondServer?.shutdown();

@@ -355,8 +355,9 @@ sequenceDiagram
 - DSH uses the shared retrieval, buffering, chunking, redaction, provider, and
   client-qualified trace paths. Its normalized Search and Add operations enter
   DSH trace and pending Add tasks use the shared writeback-reconciliation
-  projection. Its Viewer projection remains intentionally disabled until that
-  capability is added explicitly.
+  projection. The shared Viewer consumes those normalized DSH operational
+  events live and from retained trace, including reconciled terminal Add
+  status, without reading native DSH history.
 - OpenCode terminal handling accepts only matching SDK user and completed
   assistant records for the correlated session and parent message. An exact
   `MessageAbortedError` closes the Turn as interrupted without writeback; other
@@ -459,7 +460,7 @@ entrypoints and compatibility facades. It is not another implementation area.
 | `src/lifecycle/backend` | Managed process, PID/token/connection records, status probing, cleanup, and shutdown requests | Helper contracts do not depend back on the full service implementation |
 | `src/clients/codex` | Codex rollout, prompt, turn-index, and workspace interpretation; Hook memory runtime; plugin integration glue; and lifecycle participant | No Claude format fallback; request runtime remains HTTP-composition independent |
 | `src/clients/claude` | Claude transcript/turn interpretation, Hook memory runtime, and lifecycle participant | No Codex format fallback; request runtime remains HTTP-composition independent |
-| `src/clients/dsh` | DSH Session header and exact persisted event-interval interpretation, request-time memory and normalized trace runtime, and lifecycle-participant delegation | No Hook-text, rollout, transcript, SDK-message, or latest-Turn fallback; Profile mutation stays in the DSH adapter and request runtime remains HTTP-composition independent |
+| `src/clients/dsh` | DSH Session header and exact persisted event-interval interpretation, request-time memory and normalized trace runtime, and lifecycle-participant delegation | No Hook-text, rollout, transcript, SDK-message, or latest-Turn fallback; Profile mutation stays in the DSH adapter, native Event Log is not Viewer input, and request runtime remains HTTP-composition independent |
 | `src/clients/opencode` | OpenCode SDK message validation and text materialization, plugin memory runtime, and lifecycle participant | No Hook-text, database, rollout, or transcript fallback; request runtime remains HTTP-composition independent |
 | `src/memory` | Memory commands, retrieval, writeback, turn coordination, repository session pinning, manual CLI, buffering/chunking, task projection, and reconciliation | Client-neutral modules do not parse native transcript formats |
 | `src/repository` | Read-only repository identity and Repo Memory readiness | Scope derivation does not execute Git or use synchronous filesystem reads |
@@ -573,7 +574,9 @@ and
 | Repo Memory bundle | Repository-local `.repo_memory` files produced by the supervised job | Backend readiness and client-injected guidance |
 
 The Viewer is never memory, transcript, session, repository-scope, or
-lifecycle authority.
+lifecycle authority. Its projection covers all four clients through
+client-qualified normalized operational events and local trace; only Claude
+Code may supplement trace with its native transcript projection.
 
 ### 6.2 State classes and shutdown ownership
 
@@ -607,7 +610,7 @@ flowchart LR
   Trace["client-qualified local trace"]
   ViewerSink["Viewer live projection"]
   TaskProjection["writeback task projection"]
-  NativeHistory["client-owned local native history"]
+  NativeHistory["Claude client-owned transcript history"]
   ViewerStore["local trace/history projection"]
   UserProjection["content-stripping user projection"]
   PublicViewer["content-free /memory-viewer summary"]
@@ -649,9 +652,10 @@ to produce the safe public projection. The HTTP response never returns
 conversation or memory text, session or turn identifiers, transcript paths,
 or raw trace details. It never polls MemoraX. Pure read-model projections
 depend on `viewer/model.ts` rather than the aggregate Store, and `viewer/http`
-is constrained to the public route module.
-DSH is intentionally absent until its safe projection contract is implemented;
-DSH trace events fail closed at the current Viewer boundary.
+is constrained to the public route module. DSH enters the Viewer only through
+normalized, client-qualified operational events and retained DSH trace. The
+Viewer never reads the native DSH Session Event Log or its path, and live DSH
+memory events without a client-qualified TraceContext fail closed.
 
 ## 7. Packaging and Distribution
 
