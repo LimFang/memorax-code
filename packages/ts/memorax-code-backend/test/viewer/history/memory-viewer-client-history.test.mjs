@@ -43,6 +43,11 @@ test("memory viewer combines client-isolated history without identity collisions
     timestamp: "2026-07-28T00:02:00.000Z",
     response: { items: [{ memory: "OpenCode memory." }] },
   }]);
+  await writeTraceEvents(memoraxCodeHome, "dsh", "shared-session", [{
+    ...shared,
+    timestamp: "2026-07-28T00:03:00.000Z",
+    response: { items: [{ memory: "DSH memory must stay outside the current Viewer." }] },
+  }]);
 
   const all = await listMemoryViewerDataWithHistory(memoraxCodeHome);
   assert.deepEqual(all.events.map(({ client, id, content }) => ({ client, id, content })), [{
@@ -96,6 +101,9 @@ test("memory viewer combines client-isolated history without identity collisions
     assert.deepEqual(selected.projectSessions.map((entry) => entry.client), [client]);
     assert.deepEqual(selected.catalogSourceEvents.map((event) => event.client), [client]);
   }
+  const unsupported = await listMemoryViewerDataWithHistory(memoraxCodeHome, { client: "dsh" });
+  assert.deepEqual(unsupported.events, []);
+  assert.deepEqual(unsupported.projects, []);
 });
 
 test("memory viewer canonicalizes persisted timestamps before user projection", async (t) => {

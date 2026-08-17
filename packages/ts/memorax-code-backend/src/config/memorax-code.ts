@@ -86,6 +86,13 @@ export type MemoraxCodeConfig = Readonly<{
       max_event_chars?: number;
       max_file_bytes?: number;
     }>;
+    dsh?: Readonly<{
+      enabled?: boolean;
+      capture_content?: boolean;
+      retention_days?: number;
+      max_event_chars?: number;
+      max_file_bytes?: number;
+    }>;
     opencode?: Readonly<{
       enabled?: boolean;
       capture_content?: boolean;
@@ -136,7 +143,7 @@ export function renderDefaultMemoraxCodeConfig(): string {
     "[memory.add]",
     `output_language = "${MEMORAX_DEFAULT_MEMORY_OUTPUT_LANGUAGE}" # Language for newly generated MemoraX memories.`,
     "",
-    "# Controls how often Codex, Claude Code, and OpenCode native client sessions see the MemoraX Code skill reminder.",
+    "# Controls how often supported native client sessions see the MemoraX Code skill reminder.",
     "[memory.skill_reminder]",
     "interval_turns = 5 # Show the MemoraX Code skill reminder every N native client turns, starting on the first turn.",
     "",
@@ -154,6 +161,10 @@ export function renderDefaultMemoraxCodeConfig(): string {
     "[trace.claude]",
     "enabled = true # Enable local Claude session memory trace collection.",
     "capture_content = true # Store content in local Claude trace events.",
+    "",
+    "[trace.dsh]",
+    "enabled = true # Enable local DSH session memory trace collection.",
+    "capture_content = true # Store content in local DSH trace events.",
     "",
     "[trace.opencode]",
     "enabled = true # Enable local OpenCode session memory trace collection.",
@@ -238,6 +249,7 @@ function normalizeMemoraxCodeConfig(value: unknown): MemoraxCodeConfig {
   const repoUpdate = recordValue(memory?.repo_update);
   const traceCodex = recordValue(trace?.codex);
   const traceClaude = recordValue(trace?.claude);
+  const traceDsh = recordValue(trace?.dsh);
   const traceOpenCode = recordValue(trace?.opencode);
 
   return (prune({
@@ -309,6 +321,13 @@ function normalizeMemoraxCodeConfig(value: unknown): MemoraxCodeConfig {
         retention_days: numberField(traceClaude, "retention_days"),
         max_event_chars: numberField(traceClaude, "max_event_chars"),
         max_file_bytes: numberField(traceClaude, "max_file_bytes"),
+      }),
+      dsh: prune({
+        enabled: booleanField(traceDsh, "enabled"),
+        capture_content: booleanField(traceDsh, "capture_content"),
+        retention_days: numberField(traceDsh, "retention_days"),
+        max_event_chars: numberField(traceDsh, "max_event_chars"),
+        max_file_bytes: numberField(traceDsh, "max_file_bytes"),
       }),
       opencode: prune({
         enabled: booleanField(traceOpenCode, "enabled"),

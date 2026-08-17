@@ -27,9 +27,15 @@ const PNPM_SPEC = "pnpm@11.7.0";
 const RECALL = "MEMORAX_DSH_E2E_RECALL_7D49";
 const USER_PROFILE = "MEMORAX_DSH_E2E_USER_PROFILE_C42A";
 const PROCEDURE_MEMORY = "MEMORAX_DSH_E2E_PROCEDURE_8F13";
+const MEMORY_REMINDER = "MemoraX Code reminder: proactively invoke /memorax-code";
+const PERSONAL_MEMORY_REMINDER = "MemoraX Code personal-memory reminder: Use /memorax-code";
 const REASONING = "MEMORAX_DSH_E2E_REASONING_B31C";
 const REPLY = "MEMORAX_DSH_E2E_VISIBLE_REPLY_5A62";
 const FIRST_PROMPT = "MEMORAX_DSH_E2E_FIRST_TURN";
+const CRASH_PROMPT = "MEMORAX_DSH_E2E_INTERRUPTED_PROMPT";
+const RESUME_PROMPT = "MEMORAX_DSH_E2E_RESUMED_PROMPT";
+const INTERRUPTED_SESSION_ID = "memorax-dsh-e2e-interrupted";
+const INTERRUPTED_MODE_ENV = "MEMORAX_CODE_DSH_E2E_INTERRUPTED_MODE";
 const RECOVERY_PROMPT = "MEMORAX_DSH_E2E_AFTER_BACKEND_CRASH";
 const STOPPED_PROMPT = "MEMORAX_DSH_E2E_AFTER_STOP";
 const MEMORAX_KEY = "memorax-dsh-e2e-key";
@@ -130,6 +136,7 @@ async function main() {
   llmServer = await mockModule.startMockLlmServer({
     sequence: [
       "tool_call_success", "reasoning_success",
+      "slow_success", "success",
       "tool_call_success", "reasoning_success",
       "tool_call_success", "reasoning_success",
     ],
@@ -273,16 +280,109 @@ async function main() {
   assert.match(JSON.stringify(firstModelRequest.body), new RegExp(RECALL));
   assert.match(JSON.stringify(firstModelRequest.body), new RegExp(USER_PROFILE));
   assert.match(JSON.stringify(firstModelRequest.body), new RegExp(PROCEDURE_MEMORY));
-  const firstSession = [...(await snapshotFiles(sessionsRoot)).values()]
-    .find((content) => content.includes(FIRST_PROMPT));
-  assert.ok(firstSession);
+  assert.match(JSON.stringify(firstModelRequest.body), new RegExp(MEMORY_REMINDER));
+  assert.match(JSON.stringify(firstModelRequest.body), new RegExp(PERSONAL_MEMORY_REMINDER));
+  const firstSessionEntry = [...(await snapshotFiles(sessionsRoot)).entries()]
+    .find(([, content]) => content.includes(FIRST_PROMPT));
+  assert.ok(firstSessionEntry);
+  const [, firstSession] = firstSessionEntry;
+  const firstSessionId = JSON.parse(firstSession.split("\n", 1)[0]).id;
+  assert.ok(typeof firstSessionId === "string" && firstSessionId);
   assert.match(firstSession, new RegExp(RECALL));
   assert.match(firstSession, new RegExp(USER_PROFILE));
   assert.match(firstSession, new RegExp(PROCEDURE_MEMORY));
+  assert.match(firstSession, new RegExp(MEMORY_REMINDER));
+  assert.match(firstSession, new RegExp(PERSONAL_MEMORY_REMINDER));
   assert.match(firstSession, new RegExp(REASONING));
   assert.match(firstSession, /skill_content[^\n]*memorax-code/s);
+  const firstTraceEventsPath = join(paths.memoraxHome, "debug", "traces", "dsh",
+    "sessions", firstSessionId, "events.jsonl");
+  await waitFor(async () => (
+    await readFile(firstTraceEventsPath, "utf8").catch(() => "")
+  ).includes('"skill_reminder"'), "first DSH reminder trace");
+  const firstReminderEvents = (await readJsonLines(firstTraceEventsPath))
+    .filter((event) => event.type === "skill_reminder");
+  assert.equal(firstReminderEvents.length, 1);
+  assert.equal(firstReminderEvents[0].source, "dsh-cordis");
+  assert.equal(firstReminderEvents[0].trace?.context_origin, "dsh-cordis-reminder");
+  assert.deepEqual(firstReminderEvents[0].request?.triggers, ["cadence"]);
+  assert.match(JSON.stringify(firstReminderEvents[0].response), new RegExp(MEMORY_REMINDER));
   await writeFile(join(paths.workspace, ".repo_memory", "PROFILE.md"),
     "# E2E auto-build dispatch sentinel\n");
+
+  progress("crashing and resuming one real DSH session to reconcile its interrupted Turn");
+  const interruptedRunnerPath = join(headless, "memorax-interrupted-e2e-runner.mjs");
+  const interruptedPatchPath = join(isolatedRoot, "memorax-interrupted-e2e.patch.yml");
+  await writeFile(interruptedRunnerPath, interruptedRunnerSource(), "utf8");
+  await writeFile(interruptedPatchPath, [
+    "- id: headless-runner",
+    "  disabled: true",
+    "",
+    "- insert:",
+    "    - id: memorax-interrupted-e2e-runner",
+    `      name: ${JSON.stringify(pathToFileURL(interruptedRunnerPath).href)}`,
+    "",
+  ].join("\n"), "utf8");
+  const addsBeforeInterrupted = requests("/v1/memories/add").length;
+  const runInterrupted = (mode, prompt) => run(dsh, [
+    "--profile", "headless", "--patch", interruptedPatchPath, prompt,
+  ], paths.workspace, { ...runtimeEnv, [INTERRUPTED_MODE_ENV]: mode }, {
+    expectedExit: mode === "crash" ? null : 0,
+  });
+  const crashed = await runInterrupted("crash", CRASH_PROMPT);
+  assert.equal(crashed.signal, "SIGKILL", `DSH did not crash as expected:\n${crashed.stderr}`);
+  const crashSession = await sessionForPrompt(sessionsRoot, CRASH_PROMPT);
+  assert.equal(crashSession.id, INTERRUPTED_SESSION_ID);
+  const crashEvents = await readDshSessionEvents(crashSession.path);
+  const crashTurn = turnForPrompt(crashEvents, CRASH_PROMPT);
+  assert.equal(
+    crashEvents.some((event) => event.type === "turn/end" && event.data?.turn === crashTurn),
+    false,
+    "the killed DSH process persisted a graceful Turn end",
+  );
+
+  await runInterrupted("resume", RESUME_PROMPT);
+  await waitFor(
+    () => requests("/v1/memories/add").length === addsBeforeInterrupted + 1,
+    "resumed DSH Add",
+  );
+  const resumedSession = await sessionForPrompt(sessionsRoot, RESUME_PROMPT);
+  assert.equal(resumedSession.id, crashSession.id);
+  const resumedEvents = await readDshSessionEvents(resumedSession.path);
+  const resumeTurn = turnForPrompt(resumedEvents, RESUME_PROMPT);
+  assert.equal(
+    resumedEvents.filter((event) => event.type === "turn/end"
+      && event.data?.turn === crashTurn
+      && event.data?.reason?.kind === "interrupted").length,
+    1,
+    "DSH did not durably repair the crashed Turn exactly once",
+  );
+  const interruptedAdds = requests("/v1/memories/add").slice(addsBeforeInterrupted);
+  assert.equal(interruptedAdds.length, 1);
+  assertAdd(interruptedAdds[0], RESUME_PROMPT);
+  assert.doesNotMatch(JSON.stringify(interruptedAdds), new RegExp(CRASH_PROMPT));
+
+  const interruptedTracePath = join(paths.memoraxHome, "debug", "traces", "dsh",
+    "sessions", INTERRUPTED_SESSION_ID, "events.jsonl");
+  await waitFor(async () => {
+    const trace = await readFile(interruptedTracePath, "utf8").catch(() => "");
+    return trace.includes('"native_outcome":"interrupted"')
+      && trace.includes('"type":"memory_writeback"');
+  }, "interrupted and resumed DSH Trace");
+  const interruptedTrace = await readJsonLines(interruptedTracePath);
+  const crashTrace = interruptedTrace.filter((event) => event.trace?.turn_id === String(crashTurn));
+  const crashTurnEnds = crashTrace.filter((event) => event.type === "turn_end");
+  assert.equal(crashTrace.filter((event) => event.type === "turn_start").length, 1);
+  assert.equal(crashTurnEnds.length, 1);
+  assert.equal(crashTurnEnds[0].outcome, "interrupted");
+  assert.equal(crashTurnEnds[0].request?.native_outcome, "interrupted");
+  assert.equal(crashTurnEnds[0].trace?.context_origin, "dsh-session-event-log");
+  assert.equal(crashTrace.some((event) => event.type === "turn_materialized"), false);
+  assert.equal(crashTrace.some((event) => event.type === "memory_writeback"), false);
+  const resumeStartIndex = interruptedTrace.findIndex((event) => event.type === "turn_start"
+    && event.trace?.turn_id === String(resumeTurn));
+  assert.ok(interruptedTrace.indexOf(crashTurnEnds[0]) < resumeStartIndex,
+    "interrupted reconciliation did not finish before resumed retrieval");
 
   progress("recovering a crashed Backend from the current DSH generation");
   const crashedPid = backendPid;
@@ -290,7 +390,7 @@ async function main() {
   await waitFor(() => !alive(crashedPid), "crashed Backend exit");
   backendPid = undefined;
   await runTurn(dsh, RECOVERY_PROMPT, paths.workspace, runtimeEnv);
-  await waitFor(() => requests("/v1/memories/add").length === 2, "recovery Add");
+  await waitFor(() => requests("/v1/memories/add").length === 3, "recovery Add");
   const recoveredState = await readJson(statePath);
   assert.equal(resolve(recoveredState.runtimeBundleRoot),
     resolve(initialState.runtimeBundleRoot));
@@ -327,7 +427,7 @@ async function main() {
   assert.equal(await exists(backendStatePath), false);
 
   const sessions = await snapshotFiles(sessionsRoot);
-  assert.ok(sessions.size >= 3, "expected persisted sessions from three DSH Turns");
+  assert.ok(sessions.size >= 4, "expected persisted sessions from the DSH E2E Turns");
   progress("uninstalling while preserving DSH Profiles and sessions");
   assert.equal((await lifecycle("uninstall")).ok, true);
   memoraxEntry = undefined;
@@ -349,9 +449,11 @@ async function main() {
     searches: requests("/v1/memories/search").length,
     adds: requests("/v1/memories/add").length,
     firstTurnCanonicalSkillRoundTrip: true,
+    firstTurnNativeSkillReminder: true,
     firstTurnPersonalContext: true,
     repoMemoryAutoBuildDispatchedOnce: true,
     repoMemoryRuntimeHomeCanonical: true,
+    interruptedTurnRecovered: true,
     backendCrashRecoveredCurrentGeneration: true,
     laterProfileReconciled: true,
     uninstallPreservedProfilesAndSessions: true,
@@ -403,6 +505,8 @@ function assertAdd(request, prompt) {
   assert.doesNotMatch(serialized, new RegExp(RECALL));
   assert.doesNotMatch(serialized, new RegExp(USER_PROFILE));
   assert.doesNotMatch(serialized, new RegExp(PROCEDURE_MEMORY));
+  assert.doesNotMatch(serialized, /MemoraX Code reminder:/);
+  assert.doesNotMatch(serialized, /MemoraX Code personal-memory reminder:/);
   assert.doesNotMatch(serialized, new RegExp(REASONING));
   assert.doesNotMatch(serialized, /skill_content/);
 }
@@ -464,11 +568,100 @@ function repoMemoryDispatchRecorderSource() {
   ].join("\n");
 }
 
+function interruptedRunnerSource() {
+  return [
+    'import { installModelSelection } from "@deepseek-ai/dsh-agent";',
+    'import { createUserMessage } from "@deepseek-ai/dsh-llm";',
+    'import { SessionId } from "@deepseek-ai/dsh-session";',
+    "",
+    'export const name = "memorax-interrupted-e2e-runner";',
+    'export const inject = ["agentDefaultModel", "agents", "headlessStartup", "sessions"];',
+    "",
+    "export function apply(ctx) {",
+    "  void run(ctx).catch((error) => {",
+    '    process.stderr.write(`memorax interrupted E2E runner: ${error instanceof Error ? error.message : String(error)}\\n`);',
+    '    ctx.get("appExit")?.(1);',
+    "  });",
+    "}",
+    "",
+    "async function run(ctx) {",
+    '  await ctx.get("loader")?.await();',
+    '  const agents = ctx.get("agents");',
+    '  const defaultModel = ctx.get("agentDefaultModel");',
+    '  const prompt = ctx.get("headlessStartup")?.task;',
+    '  const sessions = ctx.get("sessions");',
+    "  if (!agents || !defaultModel || !sessions) return;",
+    `  const mode = process.env[${JSON.stringify(INTERRUPTED_MODE_ENV)}];`,
+    `  const sessionId = ${JSON.stringify(INTERRUPTED_SESSION_ID)};`,
+    '  if ((mode !== "crash" && mode !== "resume") || !prompt) {',
+    '    throw new Error("missing interrupted E2E mode or prompt");',
+    "  }",
+    "  let crashStarted = false;",
+    '  ctx.on("session/event", (session, event) => {',
+    '    if (mode !== "crash" || crashStarted || session.id !== sessionId || event.type !== "assistant/chunk") return;',
+    "    crashStarted = true;",
+    '    void sessions.flush(session).then(() => process.kill(process.pid, "SIGKILL"), (error) => {',
+    '      process.stderr.write(`memorax interrupted E2E flush: ${error instanceof Error ? error.message : String(error)}\\n`);',
+    "      process.exit(1);",
+    "    });",
+    "  });",
+    "  const selection = defaultModel.currentSelection();",
+    "  const setup = (agentCtx) => {",
+    "    installModelSelection(agentCtx, { current: selection, assembled: undefined });",
+    "  };",
+    "  const shared = {",
+    "    agentOptions: { provider: selection.provider, model: selection.model },",
+    "    setup,",
+    "  };",
+    '  const { agent } = mode === "resume"',
+    "    ? await agents.resume({ resumeSessionId: SessionId(sessionId), ...shared })",
+    "    : await agents.create({ sessionId: SessionId(sessionId), meta: { cwd: process.cwd() }, ...shared });",
+    "  await agent.whenIdle();",
+    "  agent.followup(createUserMessage({",
+    '    content: [{ type: "text", text: prompt }],',
+    '    source: { kind: "user" },',
+    "  }));",
+    "  await agent.whenIdle();",
+    "  await sessions.flush(agent.session);",
+    '  if (mode === "resume") ctx.get("appExit")?.(0);',
+    "}",
+    "",
+  ].join("\n");
+}
+
 async function readJsonLines(path) {
   return (await readFile(path, "utf8"))
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+}
+
+async function sessionForPrompt(sessionsRoot, prompt) {
+  await waitFor(async () => [...(await snapshotFiles(sessionsRoot)).values()]
+    .some((content) => content.includes(prompt)), `persisted session for ${prompt}`);
+  for (const [relativePath, content] of await snapshotFiles(sessionsRoot)) {
+    if (!relativePath.endsWith(".jsonl") || !content.includes(prompt)) continue;
+    const header = JSON.parse(content.split("\n", 1)[0]);
+    assert.ok(typeof header.id === "string" && header.id, "DSH session id is missing");
+    return { id: header.id, path: join(sessionsRoot, relativePath), content };
+  }
+  throw new Error(`No persisted DSH session contains ${prompt}`);
+}
+
+async function readDshSessionEvents(path) {
+  return (await readJsonLines(path)).slice(1);
+}
+
+function turnForPrompt(events, prompt) {
+  const promptIndex = events.findIndex((event) => event.type === "user/message"
+    && event.data?.source?.kind === "user"
+    && JSON.stringify(event.data).includes(prompt));
+  assert.notEqual(promptIndex, -1, `No DSH user/message contains ${prompt}`);
+  for (let index = promptIndex; index >= 0; index -= 1) {
+    const turn = events[index]?.type === "turn/start" ? events[index].data?.turn : undefined;
+    if (Number.isSafeInteger(turn) && turn > 0) return turn;
+  }
+  assert.fail(`No DSH turn/start precedes ${prompt}`);
 }
 
 async function assertProfile(root, integrated) {
@@ -592,8 +785,8 @@ async function run(command, args, cwd, env, options = {}) {
     child.once("error", rejectChild);
     child.once("close", (code, signal) => resolveChild({ code, signal }));
   }).finally(() => clearTimeout(timer));
-  const expected = options.expectedExit ?? 0;
-  if (timedOut || result.code !== expected) {
+  const expected = Object.hasOwn(options, "expectedExit") ? options.expectedExit : 0;
+  if (timedOut || (expected !== null && result.code !== expected)) {
     throw new Error([
       basename(command) + " exited " + (timedOut ? "after timeout" :
         result.code ?? result.signal),

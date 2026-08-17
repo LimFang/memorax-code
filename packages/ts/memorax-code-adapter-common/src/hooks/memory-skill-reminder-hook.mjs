@@ -9,19 +9,13 @@ import {
 } from "../config-utils.mjs";
 import {
   isMemorySkillReminderDue,
+  memorySkillReminderContext,
+  personalMemoryReminderContext,
   resolveMemorySkillReminderIntervalTurns,
 } from "./memory-skill-reminder-policy.mjs";
 
-const DEFAULT_MEMORY_SKILL_INVOCATION = "$memorax-code";
 export const PERSONAL_MEMORY_REMINDER_CONTEXT = personalMemoryReminderContext();
-
-export function personalMemoryReminderContext(memorySkillInvocation) {
-  const invocation = stringOption(memorySkillInvocation) ?? DEFAULT_MEMORY_SKILL_INVOCATION;
-  return [
-    `MemoraX Code personal-memory reminder: Use ${invocation} when the user states a durable current-repo identity or interaction preference, asks to list or recall stored personal memory, or explicitly asks to save, update, forget, or delete it.`,
-    "Route reusable action sequences and work rules to procedure memory; do not store repository facts, one-off task details, or secrets.",
-  ].join(" ");
-}
+export { personalMemoryReminderContext } from "./memory-skill-reminder-policy.mjs";
 
 export async function runMemorySkillReminderHook(options, hookInput) {
   try {
@@ -189,7 +183,7 @@ async function buildPersonalMemoryContext(options, input) {
 
 function combinedReminderContext(options, due, cadenceReminderContext, personalMemoryContext) {
   const contexts = [];
-  if (due.memoryReminderDue) contexts.push(memoryReminderContext(options));
+  if (due.memoryReminderDue) contexts.push(memorySkillReminderContext(options.memorySkillInvocation));
   if (due.supplementalReminderDue || personalMemoryContext) {
     const additionalReminderContext = stringOption(options.additionalReminderContext);
     if (additionalReminderContext) contexts.push(additionalReminderContext);
@@ -198,11 +192,6 @@ function combinedReminderContext(options, due, cadenceReminderContext, personalM
   if (due.memoryReminderDue && cadenceReminderContext) contexts.push(cadenceReminderContext);
 
   return contexts.join("\n\n");
-}
-
-function memoryReminderContext(options) {
-  const invocation = stringOption(options.memorySkillInvocation) ?? DEFAULT_MEMORY_SKILL_INVOCATION;
-  return `MemoraX Code reminder: proactively invoke ${invocation} whenever coding memory might help, even when uncertain; follow the skill's router to decide whether any memory operation is needed. Also use ${invocation} for repository-scoped personal memory, and classify the authority before reading or writing.`;
 }
 
 function defaultMemoraxCodeHome() {

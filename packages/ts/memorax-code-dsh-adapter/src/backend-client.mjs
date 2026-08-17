@@ -78,6 +78,10 @@ export function createDshBackendClient(options = {}) {
       await waitForEnsure(ensureReady(), request?.signal, 12_000);
       return httpClient.recordTurnStart(command, request);
     },
+    async recordSkillReminder(command, request) {
+      await waitForEnsure(ensureReady(), request?.signal, 5_000);
+      return httpClient.recordSkillReminder(command, request);
+    },
     async writebackTurn(command, request) {
       await waitForEnsure(ensureReady(), request?.signal, 5_000);
       return httpClient.writebackTurn(command, request);

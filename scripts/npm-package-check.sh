@@ -32,7 +32,15 @@ node scripts/check-docs.mjs
 scripts/build-npm-packages.sh "$out_dir"
 (
   unset GIT_INDEX_FILE
-  make test-npm-package
+  isolated_test_home="$(mktemp -d)"
+  trap 'rm -rf "$isolated_test_home"' EXIT
+  HOME="$isolated_test_home" \
+  MEMORAX_CODE_HOME="$isolated_test_home/.memorax-code" \
+  CODEX_HOME="$isolated_test_home/.codex" \
+  DSH_HOME="$isolated_test_home/.dsh" \
+  CLAUDE_CONFIG_DIR="$isolated_test_home/.claude" \
+  CLAUDE_HOME="$isolated_test_home/.claude" \
+    make test-npm-package
 )
 
 package_version="$(node -e 'const fs = require("fs"); const pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(pkg.version);' "$out_dir/memorax-code/package.json")"
@@ -423,6 +431,7 @@ assert config_sections == {
     "memory.writeback",
     "trace.claude",
     "trace.codex",
+    "trace.dsh",
     "trace.opencode",
 }
 assert 'output_language = "zh"' in config_text

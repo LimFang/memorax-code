@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   isMemorySkillReminderDue,
+  memorySkillReminderContext,
+  personalMemoryReminderContext,
   resolveMemorySkillReminderIntervalTurns,
 } from "../memorax-code-adapter-common/src/hooks/memory-skill-reminder-policy.mjs";
 import { scheduleMissingRepoMemoryBuild } from "../memorax-code-adapter-common/src/repo-memory/repo-memory-auto-build.mjs";
@@ -42,10 +44,12 @@ export function apply(ctx) {
     createUserMessage: createDshUserMessage,
     intervalTurns,
     isReminderDue: isMemorySkillReminderDue,
+    memoryReminderContext: memorySkillReminderContext("/memorax-code"),
     loadPersonalContext: (input, options) => loadDshPersonalContext(input, {
       ...options,
       env: runtimeEnv,
     }),
+    personalMemoryReminderContext: personalMemoryReminderContext("/memorax-code"),
     scheduleRepoMemoryBuild: (repo) => scheduleMissingRepoMemoryBuild(repo, {
       pluginRoot,
       env: runtimeEnv,
