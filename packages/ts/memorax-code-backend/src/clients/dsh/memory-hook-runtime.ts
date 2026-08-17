@@ -9,6 +9,7 @@ import type {
 } from "../../memory/hook-command.js";
 import type { MemoryDiagnosticLogger } from "../../memory/observability.js";
 import {
+  resolvedRepoMemoryWorktree,
   type ConfiguredRepositoryMemoryResult,
   type RepositoryMemorySessionRuntime,
 } from "../../memory/repository-session.js";
@@ -86,9 +87,13 @@ export function createDshMemoryHookRuntime(
         workspaceScopeReason: repositoryMemory.ok ? undefined : repositoryMemory.reason,
       });
 
+      const repoMemoryWorktree = resolvedRepoMemoryWorktree(repositoryMemory);
       const retrievalKey = JSON.stringify([command.sessionId, command.turn, command.startSeq]);
       if (retrievalTurns.has(retrievalKey)) {
-        return { ok: true };
+        return {
+          ok: true,
+          ...(repoMemoryWorktree ? { repoMemoryWorktree } : {}),
+        };
       }
       retrievalTurns.add(retrievalKey);
       while (retrievalTurns.size > retrievalTurnLimit) {
@@ -107,6 +112,7 @@ export function createDshMemoryHookRuntime(
       });
       return {
         ok: true,
+        ...(repoMemoryWorktree ? { repoMemoryWorktree } : {}),
         ...(retrieval.context ? { additionalContext: retrieval.context } : {}),
       };
     },
