@@ -29,9 +29,14 @@ Backend. The Backend is a capability-oriented modular monolith. The clients
 retain ownership of models, model-provider credentials, native tools,
 model-provider traffic, and native transcript or message creation.
 
+The source tree also contains a DeepSeek Harness (DSH) native Turn bridge.
+It consumes DSH's persisted Session Event Log through a Cordis listener and
+the same versioned local Backend protocol; its deployment lifecycle is kept
+separate from this request-time integration.
+
 Around the Backend are:
 
-- three client deployment adapters;
+- three client deployment adapters and one source-only DSH Turn bridge;
 - one lower-level shared runtime source layer;
 - one npm assembly and installed-CLI layer; and
 - repository automation that builds, validates, stages, and tests artifacts.
@@ -41,12 +46,14 @@ flowchart LR
   subgraph Clients["Client-owned runtimes"]
     Codex["Codex"]
     Claude["Claude Code"]
+    DSH["DeepSeek Harness"]
     OpenCode["OpenCode"]
   end
 
-  subgraph Adapters["Client deployment adapters"]
+  subgraph Adapters["Client integrations"]
     CodexAdapter["Codex adapter<br/>plugin, Hooks, canonical skill"]
     ClaudeAdapter["Claude adapter<br/>plugin, Hooks, installer"]
+    DshAdapter["DSH adapter<br/>Cordis Turn bridge"]
     OpenCodeAdapter["OpenCode adapter<br/>plugin, installer, skill artifact"]
   end
 
@@ -74,9 +81,11 @@ flowchart LR
 
   Codex --> CodexAdapter
   Claude --> ClaudeAdapter
+  DSH --> DshAdapter
   OpenCode --> OpenCodeAdapter
   CodexAdapter -. "versioned local Hook HTTP" .-> Backend
   ClaudeAdapter -. "versioned local Hook HTTP" .-> Backend
+  DshAdapter -. "versioned local plugin HTTP" .-> Backend
   OpenCodeAdapter -. "versioned local plugin HTTP" .-> Backend
 
   Backend --> MemoraX
@@ -94,6 +103,7 @@ relationships; the arrow labels distinguish them. It is not an import graph.
 | `packages/ts/memorax-code-adapter-common` | Shared source for Backend connection authority, private runtime records, cross-process locking and configuration, Hook generations, Hook launch helpers, and Repo/Personal Memory helpers | Backend composition, native transcript interpretation, MemoraX request execution, or client plugin policy | `packages/ts/memorax-code-adapter-common/src/backend-connection.mjs`, `src/runtime-record.mjs`, `src/hooks`, and `src/repo-memory` |
 | `packages/ts/memorax-code-codex-adapter` | Codex plugin artifact, Hook shells and runtimes, session/workspace observation, diagnostics, and the canonical shared skill | Codex rollout semantics or Backend-side writeback authority | `.codex-plugin`, `hooks`, `runtime-hooks`, `src`, and `skills/memorax-code` |
 | `packages/ts/memorax-code-claude-adapter` | Claude Code plugin artifact, Hook shells and runtimes, configuration, installer, marketplace source, and diagnostics | Claude transcript semantics or Backend memory orchestration | `.claude-plugin`, `hooks`, `runtime-hooks`, `scripts`, and `src/plugin-install.mjs` |
+| `packages/ts/memorax-code-dsh-adapter` | DSH Cordis Turn listener, exact persisted-event interval validation, and the local Backend wire protocol | DSH Profile mutation, Backend-side event interpretation, or MemoraX request execution | `src/plugin.mjs`, `src/protocol.mjs`, and `test/plugin-integration.test.mjs` |
 | `packages/ts/memorax-code-opencode-adapter` | OpenCode plugin runtime, managed thin-loader installation, automatic retrieval, SDK-backed writeback, shell-session identity, workspace runtime evidence and diagnostics, a materialized shared skill, and supervised Repo Memory maintenance and missing-bundle initialization | OpenCode message interpretation inside the Backend or model-provider configuration | `src/plugin.mjs`, `src/plugin-install.mjs`, `src/cli.mjs`, `src/repo-memory-server-runner.mjs`, and the OpenCode materialization mapping in `scripts/npm-source-files.mjs` |
 | `packages/npm/memorax-code` | Installed executable wrappers, update, preinstall/postinstall, npm manifest, and release-package source | Backend lifecycle semantics, uninstall orchestration, or artifact staging | `bin`, `lib/run-entrypoint.mjs`, and `package.json` |
 | `scripts` | Backend build orchestration, staging/materialization, package layout, documentation, and local-only data gates | Product runtime authority | Package-build/check scripts and executable contract scripts |
@@ -106,8 +116,9 @@ the owner of their behavior.
 
 ### 2.2 Physical dependency directions
 
-- The Backend and all three adapters may import adapter-common. Adapter-common must
-  not import those higher-level components back.
+- The Backend and the Codex, Claude Code, and OpenCode deployment adapters may
+  import adapter-common. Adapter-common must not import those higher-level
+  components back.
 - Adapter Hook and plugin runtimes do not import Backend implementation. They
   communicate through versioned, client-qualified local HTTP commands.
 - Backend lifecycle may load adapter configuration or installers through
@@ -232,8 +243,9 @@ Important distinctions:
   input. Their prompt or event text is not automatic writeback content
   authority; OpenCode's separately supplied SDK records are validated as
   client-native content.
-- Codex rollout JSONL, Claude Code transcript JSONL, and OpenCode SDK session
-  message records are the content authorities for their respective clients.
+- Codex rollout JSONL, Claude Code transcript JSONL, DSH's exact persisted
+  Session Event Log interval, and OpenCode SDK session message records are the
+  content authorities for their respective clients.
 - Required client/session/turn identity and repository scope fail closed when
   incomplete, conflicting, or unprovable.
 - A malformed or incomplete direct `.git` directory is the sole documented
@@ -291,6 +303,10 @@ sequenceDiagram
     Integration->>Authority: fetch session messages through the client SDK
     Authority-->>Integration: matching user and completed assistant records
     Integration->>Service: correlation and SDK message records
+  else DSH
+    Integration->>Authority: flush and read exact startSeq..endSeq interval
+    Authority-->>Integration: persisted Session header and events
+    Integration->>Service: correlation and exact persisted interval
   else Codex or Claude Code
     Integration->>Service: client-qualified writeback correlation
     Service->>Authority: read the exact rollout or transcript Turn
@@ -302,20 +318,34 @@ sequenceDiagram
   Coordinator->>Runtime: enqueue the materialized Turn
   Runtime-->>Coordinator: local scheduling accepted or rejected
   Runtime->>Provider: later flush buffered or chunked writeback
-  Provider-->>Obs: accepted task event and identity
-  Obs->>Projection: update the live task projection
-  Obs->>Trace: persist the same writeback event
-  Reconciler->>Projection: list live and persisted pending tasks
-  Projection->>Trace: read persisted writeback history
-  Reconciler->>Provider: query writeback status
-  Reconciler->>Trace: append terminal status when completed
+  Provider-->>Runtime: accepted task identity
+  alt integration supplies trace observability
+    Runtime->>Obs: emit accepted task event and identity
+    Obs->>Projection: update the live task projection
+    Obs->>Trace: persist the same writeback event
+    Reconciler->>Projection: list live and persisted pending tasks
+    Projection->>Trace: read persisted writeback history
+    Reconciler->>Provider: query writeback status
+    Reconciler->>Trace: append terminal status when completed
+  else DSH native bridge
+    Note over Runtime,Trace: no Trace, task projection, or reconciliation in this layer
+  end
 ```
 
 - Retrieval events do not enter reconciliation.
 - Local enqueue acceptance is the metadata-consumption point; provider I/O may
   occur later through the automatic writeback runtime.
 - Buffering and chunking belong to the memory capability; rollout, transcript,
-  and SDK message parsing remains client-specific.
+  DSH event-interval, and SDK message parsing remains client-specific.
+- DSH accepts only a contiguous native interval bounded by the matching
+  `turn/start` and completed `turn/end`. The Backend materializes direct user
+  text and visible model-assistant text; plugin recall, tools, reasoning, and
+  incomplete Turns are excluded. Only non-delegated sessions are eligible.
+- A valid persisted DSH interval can restore automatic writeback after a
+  Backend restart without cached Turn metadata; repository scope is still
+  resolved and validated from the persisted Session workspace.
+- DSH Search and Add intentionally stay outside Trace, task reconciliation,
+  and Memory Viewer in this source-only bridge layer.
 - OpenCode terminal handling accepts only matching SDK user and completed
   assistant records for the correlated session and parent message. An exact
   `MessageAbortedError` closes the Turn as interrupted without writeback; other
@@ -329,9 +359,10 @@ sequenceDiagram
   buffer runtime cancels and discards pending fallback turns for the same
   client and session before buffering under the Git scope. It does not migrate
   or flush those turns across namespaces.
-- Pending writeback status can be reconstructed from persisted local trace
-  after Backend restart. A still-pending provider status updates in-memory
-  reconciliation policy rather than appending a new trace event.
+- For trace-enabled clients, pending writeback status can be reconstructed
+  from persisted local trace after Backend restart. A still-pending provider
+  status updates in-memory reconciliation policy rather than appending a new
+  trace event.
 
 ### 3.5 Repo Memory coordination
 
@@ -380,6 +411,7 @@ src/
   clients/
     codex/                Codex native interpretation and lifecycle adapters
     claude/               Claude native interpretation and lifecycle participant
+    dsh/                  DSH native event-interval interpretation
     opencode/             OpenCode retrieval, SDK message interpretation, and lifecycle participant
   config/                 Backend and proxy/config interpretation
   entrypoints/            process and management-CLI orchestration
@@ -416,6 +448,7 @@ entrypoints and compatibility facades. It is not another implementation area.
 | `src/lifecycle/backend` | Managed process, PID/token/connection records, status probing, cleanup, and shutdown requests | Helper contracts do not depend back on the full service implementation |
 | `src/clients/codex` | Codex rollout, prompt, turn-index, and workspace interpretation; Hook memory runtime; plugin integration glue; and lifecycle participant | No Claude format fallback; request runtime remains HTTP-composition independent |
 | `src/clients/claude` | Claude transcript/turn interpretation, Hook memory runtime, and lifecycle participant | No Codex format fallback; request runtime remains HTTP-composition independent |
+| `src/clients/dsh` | DSH Session header and exact persisted event-interval interpretation plus its request-time memory runtime | No Hook-text, rollout, transcript, SDK-message, or latest-Turn fallback; request runtime remains HTTP-composition independent |
 | `src/clients/opencode` | OpenCode SDK message validation and text materialization, plugin memory runtime, and lifecycle participant | No Hook-text, database, rollout, or transcript fallback; request runtime remains HTTP-composition independent |
 | `src/memory` | Memory commands, retrieval, writeback, turn coordination, repository session pinning, manual CLI, buffering/chunking, task projection, and reconciliation | Client-neutral modules do not parse native transcript formats |
 | `src/repository` | Read-only repository identity and Repo Memory readiness | Scope derivation does not execute Git or use synchronous filesystem reads |
@@ -519,9 +552,9 @@ and
 
 | Concern | Authority | Derived or non-authoritative views |
 | --- | --- | --- |
-| Models, model-provider credentials, native tools, and model-provider traffic | Codex, Claude Code, or OpenCode | Backend and adapters must not proxy or persist this authority |
+| Models, model-provider credentials, native tools, and model-provider traffic | Codex, Claude Code, DeepSeek Harness, or OpenCode | Backend and adapters must not proxy or persist this authority |
 | Hook command identity | Versioned, client-qualified command plus validated required session/turn fields | Parsed HTTP request objects |
-| Automatic writeback content | Codex rollout JSONL, Claude Code transcript JSONL, or OpenCode SDK session messages for the matching client and Turn | Hook or plugin text, trace, latest-Turn guesses, local database guesses, and another client's format are not fallbacks |
+| Automatic writeback content | Codex rollout JSONL, Claude Code transcript JSONL, DSH's exact persisted Session Event Log interval, or OpenCode SDK session messages for the matching client and Turn | Hook or plugin text, trace, latest-Turn guesses, local database guesses, and another client's format are not fallbacks |
 | Workspace and repository identity | Backend read-only resolution held by the live repository-session runtime; its only permitted scope transition is the same-root degraded-direct-`.git` to verified-Git upgrade | Project labels, Viewer catalog entries, and Hook `cwd` |
 | Backend connection and managed-process ownership | Versioned private connection/token/PID records plus lifecycle lock/version validation | In-memory state in any one process |
 | MemoraX memory result and asynchronous task state | Normalized response from `provider/memorax` | Observability, trace, Viewer, and task projections |

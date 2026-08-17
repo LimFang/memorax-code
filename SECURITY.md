@@ -4,6 +4,8 @@ MemoraX Code is a local-first integration for Codex, Claude Code, and OpenCode
 with an optional external bind mode and required communication with MemoraX
 for cloud-backed memory. Security reports should distinguish the local
 Backend, client-owned provider traffic, and MemoraX memory traffic.
+The source tree also contains a DeepSeek Harness (DSH) native Turn bridge whose
+request-time authority is covered by the same trust boundaries.
 
 ## Supported Versions
 
@@ -28,9 +30,9 @@ Please allow time for triage and remediation before public disclosure.
 
 ### Client and local Backend
 
-- Codex, Claude Code, and OpenCode own provider credentials, models, native
-  tools, and provider traffic. MemoraX Code does not proxy model-provider
-  traffic and does not need client provider credentials.
+- Codex, Claude Code, DeepSeek Harness, and OpenCode own provider credentials,
+  models, native tools, and provider traffic. MemoraX Code does not proxy
+  model-provider traffic and does not need client provider credentials.
 - The managed Backend binds to loopback by default. External binding requires
   explicit opt-in and a Backend token; deployment operators must provide an
   appropriate authenticated and encrypted network boundary.
@@ -71,14 +73,15 @@ the generated configuration's automatic writeback; automatic retrieval remains
 disabled until explicitly enabled.
 
 Memory searches send the query and repository-scoped identity to MemoraX.
-When OpenCode automatic retrieval is enabled, each eligible user prompt is
-used as the search query.
+When DSH or OpenCode automatic retrieval is enabled, each eligible direct user
+prompt is used as the search query.
 Active adds and automatic writeback send the selected content needed to create
 memory. Automatic writeback may include selected user instructions and the
 matching final assistant response from an exact Codex rollout, Claude Code
-transcript, or OpenCode SDK session-message turn. It does not send the retained
-trace file, raw transcript path, SDK message records, or trace-only provenance
-as part of that payload.
+transcript, DSH persisted Session Event Log interval, or OpenCode SDK
+session-message turn. It does not send the retained trace file, raw transcript
+path, raw DSH interval, SDK message records, or trace-only provenance as part
+of that payload.
 
 Automatic writeback bounds each selected message to its configured Add limit,
 then applies a local best-effort detector before hashing, buffering, chunking,
