@@ -12,7 +12,7 @@ import {
 test("re-reads durable DSH authority without pinning the host version", (t) => {
   const root = mkdtempSync(join(tmpdir(), "memorax-code-dsh-state-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const pluginRoot = join(root, "profile", "node_modules", "@memorax-code", "dsh-adapter");
+  const pluginRoot = join(root, "profile", "node_modules", "@memorax-code", "dsh-memorax-code");
   const sourceAdapterRoot = join(root, "installed-package", "lib", "memorax-code-dsh-adapter");
   const memoraxCodeHome = join(root, "memorax-home");
   const runtimeBundleRoot = join(

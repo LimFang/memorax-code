@@ -220,7 +220,7 @@ async function main() {
   assert.equal(await exists(join(sourceRoot, "runtime")), false);
   assert.equal(await exists(join(sourceRoot, "state.json")), false);
   const profilePackage = await realpath(join(headless, "node_modules",
-    "@memorax-code", "dsh-adapter"));
+    "@memorax-code", "dsh-memorax-code"));
   const profileMetadata = await readJson(join(profilePackage, ".memorax-code-package.json"));
   const sourceManifest = await readJson(join(sourceRoot, "package.json"));
   assert.deepEqual(
@@ -473,8 +473,8 @@ async function main() {
   assert.equal(await exists(generationsRoot), false);
   await assertProfile(headless, false);
   await assertProfile(web, false);
-  assert.equal(await exists(join(headless, "node_modules", "@memorax-code", "dsh-adapter")), false);
-  assert.equal(await exists(join(web, "node_modules", "@memorax-code", "dsh-adapter")), false);
+  assert.equal(await exists(join(headless, "node_modules", "@memorax-code", "dsh-memorax-code")), false);
+  assert.equal(await exists(join(web, "node_modules", "@memorax-code", "dsh-memorax-code")), false);
   assert.equal(await readFile(headlessSentinel, "utf8"), "preserve headless\n");
   assert.equal(await readFile(webSentinel, "utf8"), "preserve web\n");
   assert.deepEqual(await snapshotFiles(sessionsRoot), sessions);
@@ -753,10 +753,10 @@ function turnForPrompt(events, prompt) {
 
 async function assertProfile(root, integrated) {
   const manifest = await readJson(join(root, "package.json"));
-  assert.equal(Object.hasOwn(manifest.dependencies || {}, "@memorax-code/dsh-adapter"),
+  assert.equal(Object.hasOwn(manifest.dependencies || {}, "@memorax-code/dsh-memorax-code"),
     integrated);
   assert.equal(Boolean(manifest.dsh?.profile?.bundles?.includes(
-    "@memorax-code/dsh-adapter")), integrated);
+    "@memorax-code/dsh-memorax-code")), integrated);
 }
 
 async function startMemoraxMock() {
