@@ -15,7 +15,10 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { withDshPluginLifecycleLock } from "../src/profile-lifecycle.mjs";
+import {
+  collectDshAdapterStatus,
+  withDshPluginLifecycleLock,
+} from "../src/profile-lifecycle.mjs";
 
 test("failed reconciliation restores the prior authority and removes newly installed Profiles", async (t) => {
   const fixture = await createReconciliationFixture(t);
@@ -343,7 +346,7 @@ test("migrates the managed legacy package identity and restores it if reconcilia
   installAdapter("web", legacyRuntimeBundleRoot);
   writeProfile(profilesRoot, "headless");
   installAdapter("headless", legacyRuntimeBundleRoot);
-  const legacyState = {
+  let legacyState = {
     ...priorState,
     runtimeBundleRoot: legacyRuntimeBundleRoot,
     profiles: ["headless", "web"],
@@ -371,6 +374,20 @@ test("migrates the managed legacy package identity and restores it if reconcilia
       return { status: 0 };
     },
   };
+
+  const statusBeforeMigration = collectDshAdapterStatus(migrationOptions);
+  assert.equal(statusBeforeMigration.ok, true);
+  assert.equal(statusBeforeMigration.installed, true);
+  assert.equal(statusBeforeMigration.enabled, true);
+  const reactivated = await withDshPluginLifecycleLock(migrationOptions, (lifecycle) => {
+    const quiesced = lifecycle.quiesce();
+    assert.equal(quiesced.previouslyEnabled, true);
+    assert.equal(lifecycle.status().installed, true);
+    return lifecycle.activate();
+  });
+  assert.equal(reactivated.ok, true);
+  assert.equal(reactivated.enabled, true);
+  legacyState = JSON.parse(readFileSync(statePath, "utf8"));
 
   const failed = await withDshPluginLifecycleLock(migrationOptions, (lifecycle) => (
     lifecycle.ensureInstalled()

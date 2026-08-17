@@ -616,7 +616,6 @@ function rollbackDshPluginReconciliation(paths, options, state, mutatedProfiles,
         profile.profile,
         state.runtimeBundleRoot,
         verificationState,
-        previousPackageName,
       )
       && !replacementPackageNames.some((packageName) => (
         profileMentionsPackage(profile.profile, packageName)
@@ -1167,14 +1166,13 @@ function profileHasInstalledAdapter(
   profile,
   runtimeBundleRoot,
   state,
-  packageName = ADAPTER_PACKAGE_NAME,
 ) {
-  if (!profileHasAdapter(profile, packageName) || !state || !nonEmpty(runtimeBundleRoot)) {
-    return false;
-  }
+  if (!state || !nonEmpty(runtimeBundleRoot)) return false;
   try {
     const sourceManifest = readJsonObject(join(runtimeBundleRoot, "package.json"));
-    if (sourceManifest?.name !== packageName
+    const packageName = sourceManifest?.name;
+    if (!MANAGED_ADAPTER_PACKAGE_NAMES.includes(packageName)
+      || !profileHasAdapter(profile, packageName)
       || !nonEmpty(sourceManifest.version)) return false;
 
     const requireFromProfile = createRequire(join(profile.path, "package.json"));
