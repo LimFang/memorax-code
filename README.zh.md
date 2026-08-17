@@ -60,10 +60,12 @@ npm install -g @memorax/memorax-code --foreground-scripts
 
 请保留 `--foreground-scripts`，以便查看完整的安装过程。安装器会自动检测本机可用的 Codex、
 Claude Code、DeepSeek Harness 和 OpenCode，并为检测到的 Coding Agent 启用集成。按照终端提示输入
-Base User ID、偏好语言和 API Key；Codex 用户还需按提示完成 Hook 的激活和信任确认。安装完成后，
-请重启或刷新所有检测到的 Coding Agent，再开始新会话。
+MemoraX User ID、偏好语言和 API Key；首次交互安装时，除非有效配置已经提供 User ID 和 API Key，
+否则两者均不能为空。Codex 用户还需按提示完成 Hook 的激活和信任确认。安装完成后，请重启或刷新
+所有检测到的 Coding Agent，再开始新会话。
 
-如果跳过配置或安装过程无法交互，npm 包仍会安装，但 MemoraX 搜索、召回和写回功能无法使用。
+如果安装过程无法交互，且有效配置尚未提供凭据，npm 包仍会安装，但 MemoraX 搜索、召回和写回
+功能无法使用。
 
 ### 体验跨会话记忆
 

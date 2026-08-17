@@ -239,7 +239,12 @@ process.exit(0);
 
 async function maybeConfigureMemoraxMemory(scriptedAnswers) {
   printMemoraxDisclosure();
-  if (!canPrompt()) {
+  const promptAvailable = canPrompt();
+  if (promptAvailable && readMemoraxInstallStatus()?.configured) {
+    log("Existing MemoraX credentials detected; keeping the effective configuration unchanged.");
+    return "preserved";
+  }
+  if (!promptAvailable) {
     log(`This install cannot prompt for a MemoraX ID and key. Register at ${MEMORAX_ACCOUNT_URL}, then edit \`~/.memorax-code/config.toml\` or rerun interactively with \`--foreground-scripts\`.`);
     return "skipped";
   }

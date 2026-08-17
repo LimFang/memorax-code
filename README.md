@@ -67,13 +67,15 @@ npm install -g @memorax/memorax-code --foreground-scripts
 Keep `--foreground-scripts` so the complete setup remains visible. The
 installer automatically detects available Codex, Claude Code, DeepSeek
 Harness, and OpenCode installations and connects those it finds. Follow the
-prompts to enter your Base User ID, preferred language, and API key. Codex
-users must also approve Hook activation and trust when prompted. Restart or
-refresh every detected coding agent after installation before starting a new
-session.
+prompts to enter your MemoraX user ID, preferred language, and API key. On an
+interactive first install, a non-empty user ID and API key are required unless
+the effective configuration already supplies both. Codex users must also
+approve Hook activation and trust when prompted. Restart or refresh every
+detected coding agent after installation before starting a new session.
 
-If setup is skipped or cannot prompt, the package remains installed but
-MemoraX-backed search, retrieval, and writeback remain unavailable.
+If installation cannot prompt and effective credentials are not already
+configured, the package remains installed but MemoraX-backed search, retrieval,
+and writeback remain unavailable.
 
 ### Try Cross-Session Memory
 

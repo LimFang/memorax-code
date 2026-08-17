@@ -1716,7 +1716,8 @@ test("postinstall does not trust configured JSON from a failed memory status com
 
 test("postinstall reports existing credentials without implicitly enabling writeback", async () => {
   const run = await runPostinstall({
-    npmCommand: "update",
+    interactive: true,
+    input: "n\n",
     memoraxCodeConfig: [
       "[clients]",
       "codex = true",
@@ -1731,8 +1732,10 @@ test("postinstall reports existing credentials without implicitly enabling write
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /Existing MemoraX credentials detected; keeping the effective configuration unchanged/);
     assert.doesNotMatch(run.result.stderr, /Connect MemoraX Code to MemoraX now/);
     assert.doesNotMatch(run.result.stderr, /Preferred language/);
+    assert.doesNotMatch(run.result.stderr, /Your MemoraX user ID|MemoraX API key \(required\)/);
     assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
     assert.match(run.result.stderr, /Automatic writeback: Disabled by effective configuration/);
     assert.doesNotMatch(run.result.stderr, /existing-secret|existing-user/);
@@ -1745,6 +1748,8 @@ test("postinstall reports existing credentials without implicitly enabling write
 
 test("postinstall recognizes environment-only MemoraX credentials", async () => {
   const run = await runPostinstall({
+    interactive: true,
+    input: "n\n",
     memoraxEnv: {
       MEMORAX_CODE_MEMORAX_API_KEY: "environment-secret",
       MEMORAX_CODE_MEMORAX_USER_ID: "environment-user",
@@ -1752,9 +1757,13 @@ test("postinstall recognizes environment-only MemoraX credentials", async () => 
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /Existing MemoraX credentials detected; keeping the effective configuration unchanged/);
+    assert.doesNotMatch(run.result.stderr, /Your MemoraX user ID|MemoraX API key \(required\)|Preferred language/);
     assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
     assert.match(run.result.stderr, /Automatic writeback: .*Enabled/);
     assert.doesNotMatch(run.result.stderr, /environment-secret|environment-user/);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.doesNotMatch(config, /environment-secret|environment-user/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1875,28 +1884,29 @@ test("postinstall preserves existing optional config instead of backfilling defa
   const run = await runPostinstall({
     memoraxCodeConfig: existingConfig,
     interactive: true,
-    input: "memorax-user\nen\nmemorax-secret\nn\n",
+    input: "n\n",
     memoraxVerify: {},
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /Existing MemoraX credentials detected; keeping the effective configuration unchanged/);
+    assert.doesNotMatch(run.result.stderr, /Your MemoraX user ID|MemoraX API key \(required\)|Preferred language/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
     assert.match(config, /\[custom\]\nkeep = true/);
     assert.deepEqual(activeTomlSections(config), [
       "clients",
       "custom",
       "memorax",
-      "memory.add",
       "memory.repo_update",
     ]);
     assert.match(tomlSectionText(config, "memory.repo_update"), /^policy = "daily"$/m);
     assert.match(tomlSectionText(config, "memory.repo_update"), /^commit_threshold = 9$/m);
     assert.match(tomlSectionText(config, "memory.repo_update"), /^cooldown_hours = 48$/m);
     assert.doesNotMatch(config, /top_k|buffer_max_turns|retention_days/);
-    assert.ok(config.includes(`endpoint = "${run.memoraxEndpoint}" # MemoraX service URL.`));
-    assert.match(config, /api_key = "memorax-secret" # MemoraX API key used by the local Backend\./);
-    assert.match(config, /user_id = "memorax-user" # MemoraX base user ID; requests derive a workspace-scoped namespace\./);
-    assert.match(config, /\[memory\.add\]\noutput_language = "en" # Language for newly generated MemoraX memories\./);
+    assert.match(config, /endpoint = "http:\/\/old-memorax\.test"/);
+    assert.match(config, /api_key = "old-secret"/);
+    assert.match(config, /user_id = "old-user"/);
+    assert.doesNotMatch(config, /\[memory\.add\]|output_language/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
