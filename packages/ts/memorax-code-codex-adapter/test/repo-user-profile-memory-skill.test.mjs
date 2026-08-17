@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = resolve(packageRoot, "../../..");
 const skillRoot = join(packageRoot, "skills", "memorax-code");
 const scriptPath = join(skillRoot, "scripts", "user_profile_memory.py");
 
@@ -75,6 +76,10 @@ test("repo memory skills route user-profile reads and writes", () => {
   assert.match(skill, /personal profile write/);
   assert.match(reference, /\.repo_memory\/user-profile\/preferences\.md/);
   assert.match(reference, /may be saved implicitly/);
+  assert.match(reference, /Keep file names, schema and script field names, type values, command options, and fixed Markdown headings in English/);
+  assert.match(reference, /Write human-readable memory content in the user's current interaction language/);
+  assert.match(reference, /procedure titles and steps and user-profile descriptions, applicability, and exceptions/);
+  assert.match(reference, /Preserve exact code identifiers, commands, paths, API names, and quoted literals without translation/);
   assert.match(reference, /Handle the semantic match before writing/);
   assert.match(reference, /New preference: add a new preference/);
   assert.match(reference, /Equivalent content: do not add a duplicate/);
@@ -95,6 +100,21 @@ test("repo memory skills route user-profile reads and writes", () => {
   assert.match(readReference, /user_profile_memory\.py list --repo <repo>/);
   assert.match(readReference, /list operation does not create it/);
   assert.match(readReference, /Do not write, normalize, migrate, repair, or delete memory/);
+});
+
+test("root READMEs document personal-memory replacement and deletion", () => {
+  const english = readFileSync(join(repoRoot, "README.md"), "utf8");
+  const chinese = readFileSync(join(repoRoot, "README.zh.md"), "utf8");
+
+  assert.match(english, /Personal Memory and Procedure Memory stay in the current repository under\s+`\.repo_memory\/`/);
+  assert.match(english, /removes the superseded\s+wording/);
+  assert.match(english, /deletes only the named preference,\s+procedure topic, section, or step/);
+  assert.match(english, /One-time task instructions do not change saved memory/);
+
+  assert.match(chinese, /Personal Memory 和 Procedure Memory 保存在当前仓库的 `\.repo_memory\/` 下/);
+  assert.match(chinese, /彻底移除被替代的文字/);
+  assert.match(chinese, /只删除点名的偏好、流程主题、段落或步骤/);
+  assert.match(chinese, /一次性任务指令不会改写已保存的记忆/);
 });
 
 test("repo-user-profile-memory script performs add duplicate update delete with counts", () => {

@@ -35,6 +35,8 @@ test("memorax-code routes personal procedure reads and writes", () => {
   assert.match(writeReference, /unclear whether the change is durable or only applies to the current task: ask the user/);
   assert.match(writeReference, /Do not modify existing memory because of a one-time instruction/);
   assert.match(writeReference, /Do not scan or clean up unrelated topics/);
+  assert.match(writeReference, /Delete only the topic file, section, or step the user explicitly identifies/);
+  assert.match(writeReference, /preserve unrelated content/);
   assert.match(writeReference, /Do not retain deleted text in tombstones/);
   assert.match(writeReference, /Apply the same rule to superseded text/);
 
