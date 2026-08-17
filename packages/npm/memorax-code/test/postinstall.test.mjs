@@ -28,6 +28,7 @@ const vscodeExtensionCommandPath = fileURLToPath(new URL("../lib/vscode-extensio
 const windowsCliInvocationPath = fileURLToPath(new URL("../lib/windows-cli-invocation.mjs", import.meta.url));
 const smolTomlPath = fileURLToPath(new URL("../../../ts/memorax-code-backend/node_modules/smol-toml", import.meta.url));
 const memoraxCodePluginId = "memorax-code-codex-adapter@memorax-code";
+const memoraxSetupInput = "memorax-user\nzh\nmemorax-secret\n";
 
 function pathWithoutCommand(command, pathValue) {
   return String(pathValue ?? "")
@@ -1268,7 +1269,7 @@ test("postinstall auto-detected Claude-only setup does not inspect Codex login s
     officialMode: true,
     codexAvailable: false,
     interactive: true,
-    input: "n\n",
+    input: memoraxSetupInput,
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
@@ -1371,7 +1372,7 @@ test("postinstall enables Codex shared Hooks without inspecting the Codex login 
     emptyClaudeSettings: true,
     claudeAvailable: false,
     interactive: true,
-    input: "n\nn\n",
+    input: `${memoraxSetupInput}n\n`,
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
@@ -1408,7 +1409,7 @@ test("postinstall uses the same Codex Hook lifecycle for a custom provider confi
     codexConfig,
     claudeAvailable: false,
     interactive: true,
-    input: "n\nn\n",
+    input: `${memoraxSetupInput}n\n`,
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
@@ -1448,7 +1449,7 @@ test("postinstall uses the Codex App bundled runtime when no standalone CLI is i
     codexAppOnly: true,
     claudeAvailable: false,
     interactive: true,
-    input: "n\ny\n",
+    input: `${memoraxSetupInput}y\n`,
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
@@ -1498,13 +1499,12 @@ test("postinstall accepts VS Code bundled runtimes when no standalone CLI is ins
   }
 });
 
-test("postinstall seeds default MemoraX Code config on first install when memory setup is skipped", async () => {
-  const run = await runPostinstall({ interactive: true, input: "n\nn\n" });
+test("postinstall seeds default MemoraX Code config during first interactive setup", async () => {
+  const run = await runPostinstall({ interactive: true, input: `${memoraxSetupInput}n\n` });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
     assert.match(run.result.stderr, /MemoraX Code requires MemoraX for its core remote-memory functionality/);
-    assert.match(run.result.stderr, /MemoraX memory: Not configured/);
-    assert.match(run.result.stderr, /Package installed, MemoraX not configured/);
+    assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
     assert.match(tomlSectionText(config, "clients"), /^dsh = true(?:\s+#.*)?$/m);
     assert.doesNotMatch(config, /profile\s*=/);
@@ -1564,7 +1564,7 @@ test("postinstall can configure only Claude Code", async () => {
     claudeSettingsText,
     codexAvailable: false,
     interactive: true,
-    input: "n\n",
+    input: memoraxSetupInput,
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
@@ -1589,7 +1589,7 @@ test("postinstall can configure only Codex", async () => {
     claudeSettingsText,
     claudeAvailable: false,
     interactive: true,
-    input: "n\ny\n",
+    input: `${memoraxSetupInput}y\n`,
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
@@ -1613,7 +1613,7 @@ test("postinstall can configure only Codex", async () => {
 test("postinstall can write MemoraX memory config before backend start", async () => {
   const run = await runPostinstall({
     interactive: true,
-    input: "y\nmemorax-user\nen\nmemorax-secret\nn\n",
+    input: "memorax-user\nen\nmemorax-secret\nn\n",
     memoraxVerify: {},
   });
   try {
@@ -1621,13 +1621,14 @@ test("postinstall can write MemoraX memory config before backend start", async (
     assert.match(run.result.stderr, /MemoraX Code requires MemoraX for its core remote-memory functionality/);
     assert.match(run.result.stderr, /automatically send selected user prompts and final assistant answers to MemoraX/);
     assert.match(run.result.stderr, /Newly generated configuration enables automatic writeback/);
-    assert.match(run.result.stderr, /If you do not have a MemoraX account\/API key, register at https:\/\/platform\.memorax\.net\//);
-    assert.match(run.result.stderr, /Connect MemoraX Code to MemoraX now/);
-    assert.equal((run.result.stderr.match(/Connect MemoraX Code to MemoraX now/g) ?? []).length, 1);
+    assert.match(run.result.stderr, /\x1b\[96m\x1b\[1m\x1b\[4mhttps:\/\/platform\.memorax\.net\/\x1b\[0m/);
+    assert.doesNotMatch(run.result.stderr, /Connect MemoraX Code to MemoraX now/);
     assert.doesNotMatch(run.result.stderr, /Enable automatic writeback|Enable writeback now/);
-    assert.match(run.result.stderr, /MemoraX base user ID: <provided>/);
+    assert.match(run.result.stderr, /MemoraX uses one user ID to keep your coding memories consistent across supported agents and devices/);
+    assert.match(run.result.stderr, /Choose a stable ID and use the same value everywhere; MemoraX Code separates repositories automatically/);
+    assert.match(run.result.stderr, /Your MemoraX user ID \(required, e\.g\. your-name\): <provided>/);
     assert.match(run.result.stderr, /Preferred language \[ZH\/en\] \(used for Memory extraction\): <provided>/);
-    assert.match(run.result.stderr, /MemoraX API key: <provided>/);
+    assert.match(run.result.stderr, /MemoraX API key \(required\): <provided>/);
     assert.doesNotMatch(run.result.stderr, /MemoraX endpoint/);
     assert.match(run.result.stderr, /MemoraX config written to/);
     assert.match(run.result.stderr, /first workspace-scoped memory request from a trusted workspace/);
@@ -1715,7 +1716,8 @@ test("postinstall does not trust configured JSON from a failed memory status com
 
 test("postinstall reports existing credentials without implicitly enabling writeback", async () => {
   const run = await runPostinstall({
-    npmCommand: "update",
+    interactive: true,
+    input: "n\n",
     memoraxCodeConfig: [
       "[clients]",
       "codex = true",
@@ -1730,8 +1732,10 @@ test("postinstall reports existing credentials without implicitly enabling write
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /Existing MemoraX credentials detected; keeping the effective configuration unchanged/);
     assert.doesNotMatch(run.result.stderr, /Connect MemoraX Code to MemoraX now/);
     assert.doesNotMatch(run.result.stderr, /Preferred language/);
+    assert.doesNotMatch(run.result.stderr, /Your MemoraX user ID|MemoraX API key \(required\)/);
     assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
     assert.match(run.result.stderr, /Automatic writeback: Disabled by effective configuration/);
     assert.doesNotMatch(run.result.stderr, /existing-secret|existing-user/);
@@ -1744,6 +1748,8 @@ test("postinstall reports existing credentials without implicitly enabling write
 
 test("postinstall recognizes environment-only MemoraX credentials", async () => {
   const run = await runPostinstall({
+    interactive: true,
+    input: "n\n",
     memoraxEnv: {
       MEMORAX_CODE_MEMORAX_API_KEY: "environment-secret",
       MEMORAX_CODE_MEMORAX_USER_ID: "environment-user",
@@ -1751,9 +1757,13 @@ test("postinstall recognizes environment-only MemoraX credentials", async () => 
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /Existing MemoraX credentials detected; keeping the effective configuration unchanged/);
+    assert.doesNotMatch(run.result.stderr, /Your MemoraX user ID|MemoraX API key \(required\)|Preferred language/);
     assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
     assert.match(run.result.stderr, /Automatic writeback: .*Enabled/);
     assert.doesNotMatch(run.result.stderr, /environment-secret|environment-user/);
+    const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
+    assert.doesNotMatch(config, /environment-secret|environment-user/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1806,11 +1816,10 @@ test("postinstall reports the global automatic writeback kill switch", async () 
 test("postinstall writes the platform endpoint when no override is supplied", async () => {
   const run = await runPostinstall({
     interactive: true,
-    input: "y\nmemorax-user\n\nmemorax-secret\nn\n",
+    input: "memorax-user\n\nmemorax-secret\nn\n",
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.result.stderr, /register at https:\/\/platform\.memorax\.net\//);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
     assert.match(config, /endpoint = "https:\/\/platform\.memorax\.net" # MemoraX service URL\./);
     assert.match(config, /output_language = "zh" # Language for newly generated MemoraX memories\./);
@@ -1819,33 +1828,34 @@ test("postinstall writes the platform endpoint when no override is supplied", as
   }
 });
 
-test("postinstall does not report empty MemoraX credentials as configured", async () => {
+test("postinstall requires non-empty MemoraX credentials", async () => {
   const run = await runPostinstall({
     interactive: true,
-    input: "y\n\nzh\nmemorax-secret\nn\n",
+    input: "\nmemorax-user\nzh\n\nmemorax-secret\nn\n",
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
-    assert.match(run.result.stderr, /MemoraX config was not written because base user ID or API key was empty/);
-    assert.match(run.result.stderr, /MemoraX memory: Not configured/);
-    assert.doesNotMatch(run.result.stderr, /MemoraX memory: .*Configured/);
+    assert.match(run.result.stderr, /MemoraX user ID is required/);
+    assert.equal((run.result.stderr.match(/Your MemoraX user ID \(required, e\.g\. your-name\)/g) ?? []).length, 2);
+    assert.match(run.result.stderr, /MemoraX API key is required/);
+    assert.equal((run.result.stderr.match(/MemoraX API key \(required\)/g) ?? []).length, 2);
+    assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
 });
 
-test("postinstall rejects an unsupported preferred language", async () => {
+test("postinstall retries an unsupported preferred language", async () => {
   const run = await runPostinstall({
     interactive: true,
-    input: "y\nmemorax-user\nfr\nmemorax-secret\nn\n",
+    input: "memorax-user\nfr\nen\nmemorax-secret\nn\n",
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
     assert.match(run.result.stderr, /preferred language must be zh or en/i);
-    assert.match(run.result.stderr, /MemoraX memory: Not configured/);
+    assert.match(run.result.stderr, /MemoraX memory: .*Configured/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
-    assert.match(config, /output_language = "zh" # Language for newly generated MemoraX memories\./);
-    assert.doesNotMatch(config, /memorax-user|memorax-secret/);
+    assert.match(config, /output_language = "en" # Language for newly generated MemoraX memories\./);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1874,28 +1884,29 @@ test("postinstall preserves existing optional config instead of backfilling defa
   const run = await runPostinstall({
     memoraxCodeConfig: existingConfig,
     interactive: true,
-    input: "y\nmemorax-user\nen\nmemorax-secret\nn\n",
+    input: "n\n",
     memoraxVerify: {},
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
+    assert.match(run.result.stderr, /Existing MemoraX credentials detected; keeping the effective configuration unchanged/);
+    assert.doesNotMatch(run.result.stderr, /Your MemoraX user ID|MemoraX API key \(required\)|Preferred language/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
     assert.match(config, /\[custom\]\nkeep = true/);
     assert.deepEqual(activeTomlSections(config), [
       "clients",
       "custom",
       "memorax",
-      "memory.add",
       "memory.repo_update",
     ]);
     assert.match(tomlSectionText(config, "memory.repo_update"), /^policy = "daily"$/m);
     assert.match(tomlSectionText(config, "memory.repo_update"), /^commit_threshold = 9$/m);
     assert.match(tomlSectionText(config, "memory.repo_update"), /^cooldown_hours = 48$/m);
     assert.doesNotMatch(config, /top_k|buffer_max_turns|retention_days/);
-    assert.ok(config.includes(`endpoint = "${run.memoraxEndpoint}" # MemoraX service URL.`));
-    assert.match(config, /api_key = "memorax-secret" # MemoraX API key used by the local Backend\./);
-    assert.match(config, /user_id = "memorax-user" # MemoraX base user ID; requests derive a workspace-scoped namespace\./);
-    assert.match(config, /\[memory\.add\]\noutput_language = "en" # Language for newly generated MemoraX memories\./);
+    assert.match(config, /endpoint = "http:\/\/old-memorax\.test"/);
+    assert.match(config, /api_key = "old-secret"/);
+    assert.match(config, /user_id = "old-user"/);
+    assert.doesNotMatch(config, /\[memory\.add\]|output_language/);
   } finally {
     await rm(run.root, { recursive: true, force: true });
   }
@@ -1942,7 +1953,7 @@ test("postinstall preserves existing config mode and owner while updating manage
     memoraxCodeConfig: '[memorax]\nuser_id = "mode-user"\n',
     memoraxCodeConfigMode: 0o640,
     interactive: true,
-    input: "n\nn\n",
+    input: `${memoraxSetupInput}n\n`,
   });
   try {
     assert.equal(run.result.code, 0, run.result.stderr);
@@ -1958,7 +1969,7 @@ test("postinstall preserves existing config mode and owner while updating manage
 test("postinstall does not probe an unscoped MemoraX namespace", async () => {
   const run = await runPostinstall({
     interactive: true,
-    input: "y\nmemorax-user\nzh\nbad-secret\nn\n",
+    input: "memorax-user\nzh\nbad-secret\nn\n",
     memoraxVerify: { status: 401, body: { error: "invalid key" } },
   });
   try {
