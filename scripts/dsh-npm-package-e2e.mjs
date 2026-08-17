@@ -229,7 +229,7 @@ async function main() {
 
   const packagedRepoMemoryHelper = join(sourceRoot, "hooks", "repo-memory-job.mjs");
   const profileRepoMemoryHelper = join(profilePackage, "hooks", "repo-memory-job.mjs");
-  const dryRun = JSON.parse((await run(process.execPath, [packagedRepoMemoryHelper,
+  const dryRun = JSON.parse((await run(process.execPath, [profileRepoMemoryHelper,
     "maintain", "--repo", paths.workspace, "--dry-run"], paths.workspace,
   { ...runtimeEnv, MEMORAX_CODE_HOME: ambientMemoraxHome })).stdout);
   assert.equal(dryRun.action, "build");
