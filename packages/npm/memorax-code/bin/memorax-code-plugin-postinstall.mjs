@@ -32,9 +32,11 @@ const HOOK_TRUST_SELECTION_ENV = "MEMORAX_CODE_CODEX_HOOK_TRUST_SELECTION_JSON";
 const PREFIX = "[MemoraX Code Install]:";
 const BACKEND_PREFIX = "[MemoraX Code Backend]:";
 const GREEN = "\x1b[32m";
+const BRIGHT_CYAN = "\x1b[96m";
 const BLUE = "\x1b[34m";
 const RED = "\x1b[31m";
 const BOLD = "\x1b[1m";
+const UNDERLINE = "\x1b[4m";
 const RESET = "\x1b[0m";
 
 if (truthyEnv(process.env.MEMORAX_CODE_SKIP_POSTINSTALL)) process.exit(0);
@@ -244,19 +246,19 @@ async function maybeConfigureMemoraxMemory(scriptedAnswers) {
   if (scriptedAnswers) {
     return await configureMemoraxMemoryFromAnswers(scriptedAnswers);
   }
+  printMemoraxRegistrationLink();
+  printMemoraxUserIdGuidance();
   let rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
-    const configureNow = await rl.question(`${PREFIX} Connect MemoraX Code to MemoraX now? [Y/n] `);
-    if (/^n(?:o)?$/i.test(configureNow.trim())) {
-      log("MemoraX connection skipped. MemoraX Code memory is not fully configured until valid credentials are supplied.");
-      return "skipped";
-    }
-    log(`If you do not have a MemoraX account/API key, register at ${MEMORAX_ACCOUNT_URL}.`);
-    const userId = (await rl.question(`${PREFIX} MemoraX base user ID: `)).trim();
+    const userId = await questionRequiredLine(
+      rl,
+      `${PREFIX} Your MemoraX user ID (required, e.g. your-name): `,
+      "MemoraX user ID is required.",
+    );
     const outputLanguage = await questionPreferredLanguage(rl);
     rl.close();
     rl = undefined;
-    const apiKey = (await questionMasked(`${PREFIX} MemoraX API key: `)).trim();
+    const apiKey = await questionRequiredMasked(`${PREFIX} MemoraX API key (required): `);
     return await writeMemoraxConfigFromInput({
       userId,
       apiKey,
@@ -308,28 +310,27 @@ async function chooseUpdateClients(previousClients, detectedClients, scriptedAns
 }
 
 async function configureMemoraxMemoryFromAnswers(answers) {
-  if (answers.length === 0) {
-    log(`No MemoraX connection response was received. Register at ${MEMORAX_ACCOUNT_URL}, then edit \`~/.memorax-code/config.toml\` or rerun interactively with \`--foreground-scripts\`.`);
-    return "skipped";
-  }
-  log("Connect MemoraX Code to MemoraX now? [Y/n]");
-  const configureNow = String(answers.shift() ?? "").trim();
-  if (/^n(?:o)?$/i.test(configureNow)) {
-    log("MemoraX connection skipped. MemoraX Code memory is not fully configured until valid credentials are supplied.");
-    return "skipped";
-  }
-  log(`If you do not have a MemoraX account/API key, register at ${MEMORAX_ACCOUNT_URL}.`);
-  log("MemoraX base user ID: <provided>");
-  const userId = String(answers.shift() ?? "").trim();
-  const outputLanguageAnswer = String(answers.shift() ?? "").trim();
-  log(`Preferred language [ZH/en] (used for Memory extraction): ${outputLanguageAnswer ? "<provided>" : "<default>"}`);
-  log("MemoraX API key: <provided>");
-  const apiKey = String(answers.shift() ?? "").trim();
+  printMemoraxRegistrationLink();
+  printMemoraxUserIdGuidance();
+  const userId = requiredScriptedAnswer(answers, {
+    prompt: "Your MemoraX user ID (required, e.g. your-name)",
+    requiredMessage: "MemoraX user ID is required.",
+    missingMessage: "No MemoraX user ID response was received; MemoraX configuration is incomplete.",
+  });
+  if (!userId) return "skipped";
+  const outputLanguage = scriptedPreferredLanguage(answers);
+  if (!outputLanguage) return "skipped";
+  const apiKey = requiredScriptedAnswer(answers, {
+    prompt: "MemoraX API key (required)",
+    requiredMessage: "MemoraX API key is required.",
+    missingMessage: "No MemoraX API key response was received; MemoraX configuration is incomplete.",
+  });
+  if (!apiKey) return "skipped";
   return await writeMemoraxConfigFromInput({
     userId,
     apiKey,
     endpoint: memoraxInstallEndpoint(),
-    outputLanguage: preferredLanguage(outputLanguageAnswer),
+    outputLanguage,
   });
 }
 
@@ -339,9 +340,19 @@ function printMemoraxDisclosure() {
   log("Newly generated configuration enables automatic writeback. Existing configuration is never enabled implicitly; disable it with `[memory.writeback] enabled = false` or `MEMORAX_CODE_MEMORAX_WRITEBACK_ENABLED=false`.");
 }
 
+function printMemoraxUserIdGuidance() {
+  log("MemoraX uses one user ID to keep your coding memories consistent across supported agents and devices.");
+  log("Choose a stable ID and use the same value everywhere; MemoraX Code separates repositories automatically.");
+}
+
+function printMemoraxRegistrationLink() {
+  log("No MemoraX account or API key yet?");
+  log(`→ Register here: ${BRIGHT_CYAN}${BOLD}${UNDERLINE}${MEMORAX_ACCOUNT_URL}${RESET}`);
+}
+
 async function writeMemoraxConfigFromInput({ userId, apiKey, endpoint, outputLanguage }) {
   if (!userId || !apiKey) {
-    logRed("MemoraX config was not written because base user ID or API key was empty.");
+    logRed("MemoraX config was not written because MemoraX user ID or API key was empty.");
     return "skipped";
   }
   if (!outputLanguage) {
@@ -355,6 +366,45 @@ async function writeMemoraxConfigFromInput({ userId, apiKey, endpoint, outputLan
   logGreen(`MemoraX config written to ${memoraxCodeConfigPath()}.`);
   log("MemoraX network access will be checked by the first workspace-scoped memory request from a trusted workspace.");
   return "configured";
+}
+
+async function questionRequiredLine(rl, prompt, requiredMessage) {
+  while (true) {
+    const answer = (await rl.question(prompt)).trim();
+    if (answer) return answer;
+    logRed(requiredMessage);
+  }
+}
+
+async function questionRequiredMasked(prompt) {
+  while (true) {
+    const answer = (await questionMasked(prompt)).trim();
+    if (answer) return answer;
+    logRed("MemoraX API key is required.");
+  }
+}
+
+function requiredScriptedAnswer(answers, { prompt, requiredMessage, missingMessage }) {
+  while (answers.length > 0) {
+    const answer = String(answers.shift() ?? "").trim();
+    log(`${prompt}: ${answer ? "<provided>" : "<empty>"}`);
+    if (answer) return answer;
+    logRed(requiredMessage);
+  }
+  logRed(missingMessage);
+  return undefined;
+}
+
+function scriptedPreferredLanguage(answers) {
+  while (answers.length > 0) {
+    const answer = String(answers.shift() ?? "").trim();
+    log(`Preferred language [ZH/en] (used for Memory extraction): ${answer ? "<provided>" : "<default>"}`);
+    const language = preferredLanguage(answer);
+    if (language) return language;
+    logRed("Preferred language must be zh or en.");
+  }
+  logRed("No preferred language response was received; MemoraX configuration is incomplete.");
+  return undefined;
 }
 
 async function questionPreferredLanguage(rl) {
