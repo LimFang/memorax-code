@@ -132,6 +132,26 @@ test("Backend memory hook endpoints reject commands outside the closed schema", 
     assistantMessageId: "assistant-opencode-writeback",
     messages: [],
   };
+  const dshTurnStart = {
+    version: 1,
+    client: "dsh",
+    sessionId: "session-dsh-turn-start",
+    turn: 1,
+    startSeq: 0,
+    cwd: "/workspace/dsh",
+    prompt: "DSH turn start.",
+  };
+  const dshWriteback = {
+    version: 1,
+    client: "dsh",
+    sessionId: "session-dsh-writeback",
+    turn: 1,
+    startSeq: 0,
+    endSeq: 1,
+    cwd: "/workspace/dsh",
+    sessionHeader: {},
+    events: [],
+  };
   try {
     for (const [caseName, path, body] of [
       ["unversioned command", "/memory/turn-start", {
@@ -214,6 +234,18 @@ test("Backend memory hook endpoints reject commands outside the closed schema", 
       ["invalid OpenCode messages container", "/memory/writeback", {
         ...openCodeWriteback,
         messages: {},
+      }],
+      ["transcript field on DSH turn-start", "/memory/turn-start", {
+        ...dshTurnStart,
+        transcriptPath: "/tmp/dsh.jsonl",
+      }],
+      ["invalid DSH events container", "/memory/writeback", {
+        ...dshWriteback,
+        events: {},
+      }],
+      ["invalid DSH event interval", "/memory/writeback", {
+        ...dshWriteback,
+        endSeq: -1,
       }],
     ]) {
       const response = await fetch(`${url}${path}`, {

@@ -3,7 +3,7 @@ import { isRecord } from "../shared/record.js";
 export const MEMORY_HOOK_COMMAND_VERSION = 1 as const;
 export const INVALID_MEMORY_HOOK_COMMAND = "invalid memory Hook command";
 
-export type MemoryHookClient = "codex" | "claude-code" | "opencode";
+export type MemoryHookClient = "codex" | "claude-code" | "opencode" | "dsh";
 
 const BASE_COMMAND_KEYS = [
   "version",
@@ -16,6 +16,7 @@ const TURN_START_KEYS: Readonly<Record<MemoryHookClient, ReadonlySet<string>>> =
   codex: new Set([...BASE_COMMAND_KEYS, "turnId", "prompt", "transcriptPath"]),
   "claude-code": new Set([...BASE_COMMAND_KEYS, "promptId", "prompt", "transcriptPath"]),
   opencode: new Set([...BASE_COMMAND_KEYS, "userMessageId", "prompt"]),
+  dsh: new Set(["version", "client", "sessionId", "turn", "startSeq", "cwd", "prompt"]),
 };
 const WRITEBACK_KEYS: Readonly<Record<MemoryHookClient, ReadonlySet<string>>> = {
   codex: new Set([...BASE_COMMAND_KEYS, "turnId", "lastAssistantMessage", "transcriptPath"]),
@@ -30,6 +31,17 @@ const WRITEBACK_KEYS: Readonly<Record<MemoryHookClient, ReadonlySet<string>>> = 
     "userMessageId",
     "assistantMessageId",
     "messages",
+  ]),
+  dsh: new Set([
+    "version",
+    "client",
+    "sessionId",
+    "turn",
+    "startSeq",
+    "endSeq",
+    "cwd",
+    "sessionHeader",
+    "events",
   ]),
 };
 const SKILL_REMINDER_KEYS: Readonly<Partial<Record<MemoryHookClient, ReadonlySet<string>>>> = {
@@ -63,7 +75,18 @@ export type OpenCodeTurnStartCommand = MemoryHookCommandBase<"opencode"> & Reado
   prompt: string;
 }>;
 
-export type TurnStartCommand = CodexTurnStartCommand | ClaudeTurnStartCommand | OpenCodeTurnStartCommand;
+export type DshTurnStartCommand = MemoryHookCommandBase<"dsh"> & Readonly<{
+  turn: number;
+  startSeq: number;
+  cwd: string;
+  prompt: string;
+}>;
+
+export type TurnStartCommand =
+  | CodexTurnStartCommand
+  | ClaudeTurnStartCommand
+  | OpenCodeTurnStartCommand
+  | DshTurnStartCommand;
 
 export type MemoryHookTurnStartResult = Readonly<{
   ok: true;
@@ -89,7 +112,20 @@ export type OpenCodeWritebackCommand = MemoryHookCommandBase<"opencode"> & Reado
   messages: readonly unknown[];
 }>;
 
-export type WritebackCommand = CodexWritebackCommand | ClaudeWritebackCommand | OpenCodeWritebackCommand;
+export type DshWritebackCommand = MemoryHookCommandBase<"dsh"> & Readonly<{
+  turn: number;
+  startSeq: number;
+  endSeq: number;
+  cwd: string;
+  sessionHeader: Readonly<Record<string, unknown>>;
+  events: readonly unknown[];
+}>;
+
+export type WritebackCommand =
+  | CodexWritebackCommand
+  | ClaudeWritebackCommand
+  | OpenCodeWritebackCommand
+  | DshWritebackCommand;
 
 export type SkillReminderTrigger = "cadence" | "post_compaction";
 
@@ -130,6 +166,22 @@ export function parseTurnStartCommand(
   if (!base) return invalidCommand();
   const prompt = requiredStringField(value, "prompt");
   if (!prompt) return invalidCommand();
+  if (base.client === "dsh") {
+    const turn = positiveSafeIntegerField(value, "turn");
+    const startSeq = nonNegativeSafeIntegerField(value, "startSeq");
+    if (!turn || startSeq === undefined || !base.cwd) return invalidCommand();
+    return {
+      ok: true,
+      command: {
+        ...base,
+        client: "dsh",
+        turn,
+        startSeq,
+        cwd: base.cwd,
+        prompt,
+      },
+    };
+  }
   if (base.client === "codex") {
     const transcriptPath = requiredStringField(value, "transcriptPath");
     const turnId = optionalStringField(value, "turnId");
@@ -179,6 +231,33 @@ export function parseWritebackCommand(
   if (!isRecord(value)) return invalidCommand();
   const base = parseCommandBase(value, WRITEBACK_KEYS);
   if (!base) return invalidCommand();
+  if (base.client === "dsh") {
+    const turn = positiveSafeIntegerField(value, "turn");
+    const startSeq = nonNegativeSafeIntegerField(value, "startSeq");
+    const endSeq = nonNegativeSafeIntegerField(value, "endSeq");
+    if (
+      !turn
+      || startSeq === undefined
+      || endSeq === undefined
+      || endSeq < startSeq
+      || !base.cwd
+      || !isRecord(value.sessionHeader)
+      || !Array.isArray(value.events)
+    ) return invalidCommand();
+    return {
+      ok: true,
+      command: {
+        ...base,
+        client: "dsh",
+        turn,
+        startSeq,
+        endSeq,
+        cwd: base.cwd,
+        sessionHeader: value.sessionHeader,
+        events: value.events,
+      },
+    };
+  }
   if (base.client === "opencode") {
     const userMessageId = requiredStringField(value, "userMessageId");
     const assistantMessageId = requiredStringField(value, "assistantMessageId");
@@ -290,7 +369,12 @@ function parseCommandBase(
 ): MemoryHookCommandBase<MemoryHookClient> | undefined {
   if (value.version !== MEMORY_HOOK_COMMAND_VERSION) return undefined;
   const client = value.client;
-  if (client !== "codex" && client !== "claude-code" && client !== "opencode") return undefined;
+  if (
+    client !== "codex"
+    && client !== "claude-code"
+    && client !== "opencode"
+    && client !== "dsh"
+  ) return undefined;
   const clientKeys = allowedKeys[client];
   if (!clientKeys || Object.keys(value).some((key) => !clientKeys.has(key))) return undefined;
   const sessionId = requiredStringField(value, "sessionId");
@@ -305,6 +389,26 @@ function parseCommandBase(
     ...(cwd.value ? { cwd: cwd.value } : {}),
     ...(workspaceKind.value ? { workspaceKind: workspaceKind.value } : {}),
   };
+}
+
+function positiveSafeIntegerField(
+  value: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const field = value[key];
+  return typeof field === "number" && Number.isSafeInteger(field) && field > 0
+    ? field
+    : undefined;
+}
+
+function nonNegativeSafeIntegerField(
+  value: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const field = value[key];
+  return typeof field === "number" && Number.isSafeInteger(field) && field >= 0
+    ? field
+    : undefined;
 }
 
 function requiredStringField(
