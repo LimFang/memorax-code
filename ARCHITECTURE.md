@@ -397,9 +397,13 @@ A relevant repo-read can invoke supervised maintenance in all four clients.
 The runner validates the bundle and selects a background build, update, or
 no-op according to policy. DSH maintenance runs through an enabled, managed
 headless-capable Profile. For OpenCode, both on-demand maintenance and
-first-eligible-prompt initialization run through a short-lived subagent session
-on the active OpenCode server; Desktop-only installations do not require a
-standalone OpenCode CLI.
+first-eligible-prompt initialization run through a short-lived subagent session.
+The detached worker reuses the active OpenCode server when it is reachable.
+Because standalone `opencode run` exposes only process-local server authority,
+the worker owns an authenticated, loopback-only `opencode serve` process when
+session creation cannot reach that authority, and closes it afterward.
+Desktop-only installations with a reachable server do not require a standalone
+OpenCode CLI.
 
 ## 4. Backend Modular Monolith
 
