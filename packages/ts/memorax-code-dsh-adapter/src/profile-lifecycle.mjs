@@ -144,7 +144,8 @@ export function collectDshAdapterStatus(options = {}) {
     );
     const managed = Boolean(state) && !stateProblem;
     const installed = profiles.length > 0
-      && profiles.every((profile) => profile.managed && profile.exists && profile.installed);
+      && profiles.every((profile) => profile.managed && profile.exists && profile.installed)
+      && managedProfilesHaveInstalledHeadlessBundle(discoveredProfiles, managedNames);
     const base = {
       integration: "plugin",
       managed,
@@ -285,7 +286,8 @@ function readDshPluginStatusUnlocked(paths, options) {
     state,
   );
   const installed = state.profiles.length > 0
-    && managedProfiles.every((profile) => profile.installed);
+    && managedProfiles.every((profile) => profile.installed)
+    && managedProfilesHaveInstalledHeadlessBundle(profiles, new Set(state.profiles));
   return {
     ok: true,
     action: "dsh-plugin-status",
@@ -360,7 +362,7 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
     };
   }
 
-  let workerProfileName = profiles.find(profileIsHeadlessCapable)?.name;
+  let workerProfileName = profiles.find(profileHasInstalledHeadlessBundle)?.name;
   let targetProfiles = profiles;
   let initializeWorkerProfile = false;
   if (!workerProfileName) {
@@ -459,7 +461,7 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
         || current.status !== "valid"
         || !profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)
         || (profile.name === workerProfileName
-          && !profileIsHeadlessCapable(current.profile))) {
+          && !profileHasInstalledHeadlessBundle(current.profile))) {
         failedProfiles.push(profileMutationFailure(
           profile.name,
           result,
@@ -492,7 +494,8 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
 
     if (current.status === "valid"
       && profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)
-      && (profile.name !== workerProfileName || profileIsHeadlessCapable(current.profile))) {
+      && (profile.name !== workerProfileName
+        || profileHasInstalledHeadlessBundle(current.profile))) {
       installedProfiles.push(profile.name);
     } else {
       failedProfiles.push(profileMutationFailure(
@@ -517,7 +520,7 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
     }
   }
   if (!finalProfiles.some((profile) => (
-    profile.status === "valid" && profileIsHeadlessCapable(profile.profile)
+    profile.status === "valid" && profileHasInstalledHeadlessBundle(profile.profile)
   )) && !failedProfiles.some((failure) => failure.name === workerProfileName)) {
     failedProfiles.push({ name: workerProfileName, reason: "headless_profile_not_capable" });
   }
@@ -691,7 +694,8 @@ function activateDshPluginInstallationUnlocked(paths, options) {
   if (state.profiles.length === 0
     || state.profiles.some((name) => (
       !profileHasInstalledAdapter(profileByName.get(name), state.runtimeBundleRoot, state)
-    ))) {
+    ))
+    || !managedProfilesHaveInstalledHeadlessBundle(profiles, new Set(state.profiles))) {
     return {
       ok: false,
       action: "dsh-plugin-activate",
@@ -1209,8 +1213,22 @@ function profileHasAdapter(profile, packageName = ADAPTER_PACKAGE_NAME) {
     && profile.bundles.includes(packageName));
 }
 
-function profileIsHeadlessCapable(profile) {
-  return Boolean(profile?.bundles.includes(HEADLESS_BUNDLE_NAME));
+function managedProfilesHaveInstalledHeadlessBundle(profiles, managedNames) {
+  return profiles.some((profile) => (
+    managedNames.has(profile.name) && profileHasInstalledHeadlessBundle(profile)
+  ));
+}
+
+function profileHasInstalledHeadlessBundle(profile) {
+  if (!profile?.bundles.includes(HEADLESS_BUNDLE_NAME)) return false;
+  try {
+    // DSH exposes built-in bundles through the Profile's shared resolution tree.
+    const requireFromProfile = createRequire(join(profile.path, "package.json"));
+    readFileSync(requireFromProfile.resolve(HEADLESS_BUNDLE_NAME), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function profileHasInstalledAdapter(

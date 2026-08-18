@@ -96,7 +96,11 @@ $DSH_HOME/profiles/<profile-name>/
 under `$MEMORAX_CODE_HOME/adapters/dsh/runtime/generations/` and installed into
 Profiles through DSH's native plugin command. The globally installed npm
 package remains immutable; do not copy or edit the generated state or runtime
-directories by hand.
+directories by hand. When at least one valid Profile exists but none provides
+a loadable `@deepseek-ai/dsh-headless` bundle, MemoraX Code asks the same native
+plugin command to initialize the standard `headless` Profile when that name is
+available. Stop and uninstall remove the MemoraX Code adapter from this Profile
+but preserve the Profile and its native data.
 
 MemoraX Code is tested with DSH `0.1.0-rc.6`. Other valid semantic versions are
 accepted but appear as untested in status output; compatibility is not

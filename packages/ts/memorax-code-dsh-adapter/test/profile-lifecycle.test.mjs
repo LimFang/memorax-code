@@ -319,6 +319,61 @@ test("restores the persisted DSH home when DSH_HOME is not configured", async (t
   assert.deepEqual(report.profiles, [{ name: "web", exists: true, installed: false }]);
 });
 
+test("reports drift and rejects activation when the managed worker loses its headless bundle", async (t) => {
+  const fixture = await createReconciliationFixture(t);
+  const {
+    profilesRoot,
+    initialOptions,
+  } = fixture;
+  const manifestPath = join(profilesRoot, "web", "package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.dsh.profile.bundles = manifest.dsh.profile.bundles
+    .filter((name) => name !== HEADLESS_BUNDLE_NAME);
+  writeJson(manifestPath, manifest);
+
+  const publicStatus = collectDshAdapterStatus(initialOptions);
+  assert.equal(publicStatus.ok, true);
+  assert.equal(publicStatus.installed, false);
+  assert.equal(publicStatus.enabled, false);
+  assert.equal(publicStatus.reason, "profile_drift");
+
+  const activation = await withDshPluginLifecycleLock(initialOptions, (lifecycle) => {
+    const status = lifecycle.status();
+    assert.equal(status.installed, false);
+    assert.equal(status.enabled, false);
+    return lifecycle.activate();
+  });
+  assert.equal(activation.ok, false);
+  assert.equal(activation.reason, "managed_profiles_not_installed");
+});
+
+test("does not accept a stale headless bundle declaration without an installed module", async (t) => {
+  const fixture = await createReconciliationFixture(t);
+  const {
+    profilesRoot,
+    initialOptions,
+  } = fixture;
+  rmSync(join(profilesRoot, "node_modules", ...HEADLESS_BUNDLE_NAME.split("/")), {
+    recursive: true,
+    force: true,
+  });
+
+  const publicStatus = collectDshAdapterStatus(initialOptions);
+  assert.equal(publicStatus.ok, true);
+  assert.equal(publicStatus.installed, false);
+  assert.equal(publicStatus.enabled, false);
+  assert.equal(publicStatus.reason, "profile_drift");
+
+  const activation = await withDshPluginLifecycleLock(initialOptions, (lifecycle) => {
+    const status = lifecycle.status();
+    assert.equal(status.installed, false);
+    assert.equal(status.enabled, false);
+    return lifecycle.activate();
+  });
+  assert.equal(activation.ok, false);
+  assert.equal(activation.reason, "managed_profiles_not_installed");
+});
+
 test("migrates the managed legacy package identity and restores it if reconciliation fails", async (t) => {
   const fixture = await createReconciliationFixture(t);
   const {
@@ -776,4 +831,14 @@ function writeProfile(profilesRoot, name, bundles = []) {
     dependencies: {},
     dsh: { profile: { bundles } },
   });
+  if (bundles.includes(HEADLESS_BUNDLE_NAME)) {
+    const headlessRoot = join(profilesRoot, "node_modules", ...HEADLESS_BUNDLE_NAME.split("/"));
+    mkdirSync(headlessRoot, { recursive: true });
+    writeJson(join(headlessRoot, "package.json"), {
+      name: HEADLESS_BUNDLE_NAME,
+      version: "0.1.0-test",
+      main: "index.js",
+    });
+    writeFileSync(join(headlessRoot, "index.js"), "module.exports = {};\n");
+  }
 }
