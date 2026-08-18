@@ -26,6 +26,11 @@
 </p>
 
 <p align="center">
+  <a href="https://discord.gg/eCUS8PpjG"><img src="https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white" alt="加入 MemoraX Code Discord 社群"></a>
+  <a href="docs/assets/wechat-group-qr.jpg"><img src="https://img.shields.io/badge/WeChat-Join%20Group-07C160?logo=wechat&logoColor=white" alt="加入 MemoraX Code 微信群"></a>
+</p>
+
+<p align="center">
   <a href="README.md">English</a> · <strong>简体中文</strong>
 </p>
 
