@@ -77,6 +77,21 @@ If installation cannot prompt and effective credentials are not already
 configured, the package remains installed but MemoraX-backed search, retrieval,
 and writeback remain unavailable.
 
+### Installation Troubleshooting
+
+If the initial setup does not work as expected, check these common cases:
+
+| Symptom | Recommended fix |
+| --- | --- |
+| Installation fails with an unsupported Node.js version | Run `node --version` and upgrade to Node.js 24 or later before reinstalling MemoraX Code. |
+| Interactive setup was skipped or could not prompt | Configure the required MemoraX values in `$MEMORAX_CODE_HOME/config.toml` or through the documented environment variables, then run `memorax-code start`. |
+| MemoraX API key is missing or not configured | Run `memorax-cli status` to check the current configuration, then add the API key through the supported configuration or environment variables. Never paste the key into chats or public issues. |
+| Search, retrieval, or writeback is unavailable after installation | Run `memorax-code status` and `memorax-cli status`. Verify the MemoraX credentials and memory settings, then restart with `memorax-code start`. |
+
+See [Configuration](docs/configuration.md) for supported settings and
+[Troubleshooting](docs/troubleshooting.md) for detailed diagnostics.
+
+
 ### Try Cross-Session Memory
 
 Clone the example repository from the product website, then open Codex, Claude
