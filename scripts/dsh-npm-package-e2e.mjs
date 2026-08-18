@@ -176,11 +176,12 @@ async function main() {
     DSH_PERMISSION_MODE: "danger-full-access",
   };
 
-  progress("creating the first real DSH Profile");
-  await createProfile(dsh, "headless", paths, runtimeEnv, true);
+  progress("creating only the real DSH web Profile");
+  await createProfile(dsh, "web", paths, runtimeEnv, false);
+  const web = join(paths.dshHome, "profiles", "web");
+  const webSentinel = join(web, "memorax-e2e-preserve.txt");
+  await writeFile(webSentinel, "preserve web\n");
   const headless = join(paths.dshHome, "profiles", "headless");
-  const headlessSentinel = join(headless, "memorax-e2e-preserve.txt");
-  await writeFile(headlessSentinel, "preserve headless\n");
 
   const tarball = await memoraxTarball(paths, runtimeEnv);
   progress("installing the MemoraX Code tarball with real npm lifecycle scripts");
@@ -189,7 +190,7 @@ async function main() {
   { timeout: 300_000 });
   const installOutput = installed.stdout + "\n" + installed.stderr;
   assert.match(installOutput, /Detected existing DeepSeek Harness profiles/);
-  assert.match(installOutput, /DeepSeek Harness profiles: found \(headless\)/);
+  assert.match(installOutput, /DeepSeek Harness profiles: found \(web\)/);
   assert.match(installOutput, /Restart or refresh DeepSeek Harness/);
   assert.doesNotMatch(installOutput, /client adapters were skipped for this install/);
 
@@ -208,9 +209,10 @@ async function main() {
   };
 
   await assertProfile(headless, true);
+  await assertProfile(web, true);
   const initialState = await readJson(statePath);
   assert.equal(initialState.enabled, true);
-  assert.deepEqual(initialState.profiles, ["headless"]);
+  assert.deepEqual(initialState.profiles, ["headless", "web"]);
   assert.equal(initialState.dshVersion, DSH_VERSION);
   assert.equal(resolve(initialState.adapterRoot), resolve(sourceRoot));
   assert.equal(isInside(initialState.runtimeBundleRoot, generationsRoot), true);
@@ -236,6 +238,9 @@ async function main() {
   assert.equal(await readFile(join(profilePackage, "skills", "memorax-code", "SKILL.md"), "utf8"),
     canonicalSkill);
   assert.equal(await exists(join(profilePackage, "src", "profile-lifecycle.mjs")), false);
+  await createProfile(dsh, "headless", paths, runtimeEnv, true);
+  const headlessSentinel = join(headless, "memorax-e2e-preserve.txt");
+  await writeFile(headlessSentinel, "preserve headless\n");
 
   const packagedRepoMemoryHelper = join(sourceRoot, "hooks", "repo-memory-job.mjs");
   const profileRepoMemoryHelper = join(profilePackage, "hooks", "repo-memory-job.mjs");
@@ -437,17 +442,18 @@ async function main() {
   }
 
   progress("reconciling a Profile created after installation");
-  await createProfile(dsh, "web", paths, runtimeEnv, false);
-  const web = join(paths.dshHome, "profiles", "web");
-  const webSentinel = join(web, "memorax-e2e-preserve.txt");
-  await writeFile(webSentinel, "preserve web\n");
+  const auxiliary = join(paths.dshHome, "profiles", "auxiliary");
+  await run(dsh, ["plugin", "--profile", "auxiliary", "--version"], paths.workspace, runtimeEnv);
+  const auxiliarySentinel = join(auxiliary, "memorax-e2e-preserve.txt");
+  await writeFile(auxiliarySentinel, "preserve auxiliary\n");
   const drift = await lifecycle("status", 1);
   assert.equal(drift.dshAdapter?.reason, "profile_drift");
   assert.equal((await lifecycle("start")).dshAdapter?.enabled, true);
   backendPid = validPid((await readJson(backendStatePath)).pid);
+  await assertProfile(auxiliary, true);
   await assertProfile(headless, true);
   await assertProfile(web, true);
-  assert.deepEqual((await readJson(statePath)).profiles, ["headless", "web"]);
+  assert.deepEqual((await readJson(statePath)).profiles, ["auxiliary", "headless", "web"]);
 
   progress("stopping and proving a DSH Turn cannot revive the Backend");
   const trafficBeforeStop = memoraxServer.requests.length;
@@ -456,6 +462,7 @@ async function main() {
   await waitFor(() => !alive(pidBeforeStop), "stopped Backend exit");
   backendPid = undefined;
   assert.equal((await readJson(statePath)).enabled, false);
+  await assertProfile(auxiliary, false);
   await assertProfile(headless, false);
   await assertProfile(web, false);
   await runTurn(dsh, STOPPED_PROMPT, paths.workspace, runtimeEnv);
@@ -471,10 +478,13 @@ async function main() {
   assert.equal(await exists(installedRoot), false);
   assert.equal(await exists(statePath), false);
   assert.equal(await exists(generationsRoot), false);
+  await assertProfile(auxiliary, false);
   await assertProfile(headless, false);
   await assertProfile(web, false);
+  assert.equal(await exists(join(auxiliary, "node_modules", "@memorax-code", "dsh-memorax-code")), false);
   assert.equal(await exists(join(headless, "node_modules", "@memorax-code", "dsh-memorax-code")), false);
   assert.equal(await exists(join(web, "node_modules", "@memorax-code", "dsh-memorax-code")), false);
+  assert.equal(await readFile(auxiliarySentinel, "utf8"), "preserve auxiliary\n");
   assert.equal(await readFile(headlessSentinel, "utf8"), "preserve headless\n");
   assert.equal(await readFile(webSentinel, "utf8"), "preserve web\n");
   assert.deepEqual(await snapshotFiles(sessionsRoot), sessions);

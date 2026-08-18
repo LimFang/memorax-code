@@ -20,6 +20,8 @@ import {
   withDshPluginLifecycleLock,
 } from "../src/profile-lifecycle.mjs";
 
+const HEADLESS_BUNDLE_NAME = "@deepseek-ai/dsh-headless";
+
 test("failed reconciliation restores the prior authority and removes newly installed Profiles", async (t) => {
   const fixture = await createReconciliationFixture(t);
   const {
@@ -344,7 +346,7 @@ test("migrates the managed legacy package identity and restores it if reconcilia
     runtimeBundleRoot: legacyRuntimeBundleRoot,
   });
   installAdapter("web", legacyRuntimeBundleRoot);
-  writeProfile(profilesRoot, "headless");
+  writeProfile(profilesRoot, "headless", [HEADLESS_BUNDLE_NAME]);
   installAdapter("headless", legacyRuntimeBundleRoot);
   let legacyState = {
     ...priorState,
@@ -532,7 +534,7 @@ test("reports pnpm missing from DSH's native Profile plugin manager", async (t) 
   const adapterRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const dshHome = join(root, "dsh-home");
   const memoraxCodeHome = join(root, "memorax-code-home");
-  writeProfile(join(dshHome, "profiles"), "web");
+  writeProfile(join(dshHome, "profiles"), "web", [HEADLESS_BUNDLE_NAME]);
 
   const report = await withDshPluginLifecycleLock({
     adapterRoot,
@@ -555,24 +557,28 @@ test("reports pnpm missing from DSH's native Profile plugin manager", async (t) 
   ]);
 });
 
-test("materializes, packs, installs, and reuses one per-home runtime generation", async (t) => {
+test("materializes one runtime generation and provisions a web-only headless worker", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "memorax-code-dsh-runtime-bundle-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const adapterRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const adapterManifest = JSON.parse(readFileSync(join(adapterRoot, "package.json"), "utf8"));
   const memoraxCodeHome = join(root, "memorax-code-home");
   const dshHome = join(root, "dsh-home");
-  const profileRoot = join(dshHome, "profiles", "web");
-  const profileManifestPath = join(profileRoot, "package.json");
+  const profilesRoot = join(dshHome, "profiles");
+  const webRoot = join(profilesRoot, "web");
+  const webManifestPath = join(webRoot, "package.json");
   const packRoot = join(root, "packs");
-  mkdirSync(profileRoot, { recursive: true });
+  mkdirSync(webRoot, { recursive: true });
   mkdirSync(packRoot, { recursive: true });
-  writeJson(profileManifestPath, {
+  writeJson(webManifestPath, {
     name: "dsh-profile-web",
     version: "1.0.0",
     private: true,
     dependencies: {},
-    dsh: { profile: { bundles: [] } },
+    dsh: { profile: { bundles: [
+      "@deepseek-ai/dsh-base",
+      "@deepseek-ai/dsh-web-app",
+    ] } },
   });
 
   let addCalls = 0;
@@ -586,17 +592,31 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
       if (invocation.args.length === 1 && invocation.args[0] === "--version") {
         return { status: 0, stdout: "0.1.0-rc.6\n" };
       }
-      assert.deepEqual(invocation.args.slice(0, 4), ["plugin", "--profile", "web", "add"]);
+      assert.deepEqual(
+        [invocation.args[0], invocation.args[1], invocation.args[3]],
+        ["plugin", "--profile", "add"],
+      );
+      const profileName = invocation.args[2];
+      if (profileName === "headless") {
+        writeProfile(profilesRoot, profileName, [
+          "@deepseek-ai/dsh-base",
+          HEADLESS_BUNDLE_NAME,
+        ]);
+      }
+      const profileRoot = join(profilesRoot, profileName);
+      const profileManifestPath = join(profileRoot, "package.json");
       addCalls += 1;
       const runtimeBundleRoot = invocation.args[4].slice("file:".length);
-      const pack = spawnSync("npm", [
-        "pack",
-        runtimeBundleRoot,
-        "--json",
-        `--pack-destination=${packRoot}`,
-      ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-      assert.equal(pack.status, 0, pack.stderr);
-      packedFiles = JSON.parse(pack.stdout)[0].files.map(({ path }) => path).sort();
+      if (packedFiles === undefined) {
+        const pack = spawnSync("npm", [
+          "pack",
+          runtimeBundleRoot,
+          "--json",
+          `--pack-destination=${packRoot}`,
+        ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+        assert.equal(pack.status, 0, pack.stderr);
+        packedFiles = JSON.parse(pack.stdout)[0].files.map(({ path }) => path).sort();
+      }
       const install = spawnSync("npm", [
         "install",
         "--ignore-scripts",
@@ -607,7 +627,7 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
       ], { cwd: profileRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
       assert.equal(install.status, 0, install.stderr);
       const manifest = JSON.parse(readFileSync(profileManifestPath, "utf8"));
-      manifest.dsh.profile.bundles = ["@memorax-code/dsh-memorax-code"];
+      manifest.dsh.profile.bundles.push("@memorax-code/dsh-memorax-code");
       writeJson(profileManifestPath, manifest);
       return { status: 0 };
     },
@@ -619,11 +639,14 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
   assert.equal(first.ok, true);
   assert.equal(first.installed, true);
   assert.equal(first.enabled, false);
-  assert.equal(addCalls, 1);
+  assert.deepEqual(first.detectedProfiles, ["web"]);
+  assert.deepEqual(first.installedProfiles, ["headless", "web"]);
+  assert.equal(addCalls, 2);
   assert.equal(existsSync(join(adapterRoot, ".memorax-code-package.json")), false);
 
   const statePath = join(memoraxCodeHome, "adapters", "dsh", "state.json");
   const firstState = JSON.parse(readFileSync(statePath, "utf8"));
+  assert.deepEqual(firstState.profiles, ["headless", "web"]);
   assert.match(firstState.runtimeBundleRoot, /[/\\]runtime[/\\]generations[/\\][0-9a-f]{64}$/);
   assert.equal(existsSync(join(firstState.runtimeBundleRoot, "src", "profile-lifecycle.mjs")), false);
   assert.equal(existsSync(join(
@@ -633,7 +656,13 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
     "windows-cli-invocation.mjs",
   )), true);
   assert.deepEqual(packedFiles, ["package.json", ...adapterManifest.files].sort());
-  const installedRoot = join(profileRoot, "node_modules", "@memorax-code", "dsh-memorax-code");
+  const installedRoot = join(
+    profilesRoot,
+    "headless",
+    "node_modules",
+    "@memorax-code",
+    "dsh-memorax-code",
+  );
   const installed = await import(pathToFileURL(join(installedRoot, "src", "index.mjs")).href);
   assert.equal(installed.name, "memorax-code");
   let contextRead = false;
@@ -658,7 +687,7 @@ test("materializes, packs, installs, and reuses one per-home runtime generation"
   ));
   const secondState = JSON.parse(readFileSync(statePath, "utf8"));
   assert.equal(second.ok, true);
-  assert.equal(addCalls, 1);
+  assert.equal(addCalls, 2);
   assert.equal(secondState.runtimeBundleRoot, firstState.runtimeBundleRoot);
   assert.deepEqual(
     readdirSync(join(memoraxCodeHome, "adapters", "dsh", "runtime", "generations")),
@@ -674,7 +703,7 @@ async function createReconciliationFixture(t) {
   const dshHome = join(root, "dsh-home");
   const profilesRoot = join(dshHome, "profiles");
   const statePath = join(memoraxCodeHome, "adapters", "dsh", "state.json");
-  writeProfile(profilesRoot, "web");
+  writeProfile(profilesRoot, "web", [HEADLESS_BUNDLE_NAME]);
 
   const installAdapter = (profileName, runtimeBundleRoot) => {
     const profileRoot = join(profilesRoot, profileName);
@@ -738,13 +767,13 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function writeProfile(profilesRoot, name) {
+function writeProfile(profilesRoot, name, bundles = []) {
   const profileRoot = join(profilesRoot, name);
   mkdirSync(profileRoot, { recursive: true });
   writeJson(join(profileRoot, "package.json"), {
     name: `dsh-profile-${name}`,
     private: true,
     dependencies: {},
-    dsh: { profile: { bundles: [] } },
+    dsh: { profile: { bundles } },
   });
 }

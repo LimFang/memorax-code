@@ -190,13 +190,16 @@ process's in-memory serialization.
 DSH lifecycle discovery reads valid Profiles under `DSH_HOME`. The globally
 staged adapter source is immutable; the adapter materializes a content-addressed
 runtime generation under the selected `MEMORAX_CODE_HOME` and asks DSH's native
-plugin command to install that generation into each managed Profile. The
-Backend lifecycle lock is acquired before the DSH state lock. Start quiesces
-the old authority, prepares Profile artifacts with authority disabled, and
-activates them only after Backend readiness. Stop, update, and uninstall
-publish disabled authority before Profile mutation. A disabled or invalid
-runtime stays inert inside DSH rather than registering listeners or recovering
-the Backend.
+plugin command to install that generation into each managed Profile. When DSH
+has an existing Profile but none can run headless work, the same native command
+initializes the standard `headless` Profile and brings it under adapter
+ownership so supervised Repo Memory always has a worker. Removal uninstalls the
+adapter without deleting DSH Profiles. The Backend lifecycle lock is acquired
+before the DSH state lock. Start quiesces the old authority, prepares Profile
+artifacts with authority disabled, and activates them only after Backend
+readiness. Stop, update, and uninstall publish disabled authority before
+Profile mutation. A disabled or invalid runtime stays inert inside DSH rather
+than registering listeners or recovering the Backend.
 
 OpenCode lifecycle discovery accepts either its configuration directory or an
 `opencode` executable on `PATH`, so Desktop-only, CLI-only, and combined

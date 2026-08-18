@@ -50,6 +50,8 @@ const { resolveWindowsCliInvocation } = await import(
 const STATE_VERSION = 1;
 const RUNTIME = "dsh";
 const ADAPTER_PACKAGE_NAME = "@memorax-code/dsh-memorax-code";
+const HEADLESS_PROFILE_NAME = "headless";
+const HEADLESS_BUNDLE_NAME = "@deepseek-ai/dsh-headless";
 const LEGACY_ADAPTER_PACKAGE_NAMES = Object.freeze(["@memorax-code/dsh-adapter"]);
 const MANAGED_ADAPTER_PACKAGE_NAMES = Object.freeze([
   ADAPTER_PACKAGE_NAME,
@@ -358,6 +360,38 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
     };
   }
 
+  let workerProfileName = profiles.find(profileIsHeadlessCapable)?.name;
+  let targetProfiles = profiles;
+  let initializeWorkerProfile = false;
+  if (!workerProfileName) {
+    const headlessPath = join(paths.profilesRoot, HEADLESS_PROFILE_NAME);
+    const headless = inspectProfile(HEADLESS_PROFILE_NAME, headlessPath);
+    if (headless.status === "manifest_unreadable") {
+      return {
+        ok: false,
+        action: "dsh-plugin-install",
+        runtime: RUNTIME,
+        reason: "profile_manifest_unreadable",
+        profiles: [HEADLESS_PROFILE_NAME],
+      };
+    }
+    if (headless.status === "valid") {
+      return {
+        ok: false,
+        action: "dsh-plugin-install",
+        runtime: RUNTIME,
+        reason: "headless_profile_not_capable",
+        profiles: [HEADLESS_PROFILE_NAME],
+      };
+    }
+    workerProfileName = HEADLESS_PROFILE_NAME;
+    initializeWorkerProfile = true;
+    targetProfiles = [
+      ...profiles,
+      { name: HEADLESS_PROFILE_NAME, path: headlessPath },
+    ].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
   const memoraxCodeCommand = resolveMemoraxCodeCommand(options.memoraxCodeCommand);
   const metadata = {
     version: 1,
@@ -387,7 +421,7 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
     // interrupted or partial native add remains repairable and removable.
     profiles: [...new Set([
       ...previouslyManaged,
-      ...profiles.map((profile) => profile.name),
+      ...targetProfiles.map((profile) => profile.name),
     ])].sort(),
     updatedAt: now,
   };
@@ -396,9 +430,12 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
   const installedProfiles = [];
   const failedProfiles = [];
   const mutatedProfiles = [];
-  for (const profile of profiles) {
+  for (const profile of targetProfiles) {
     let current = inspectProfile(profile.name, profile.path);
-    if (current.status !== "valid") {
+    if (current.status !== "valid"
+      && !(initializeWorkerProfile
+        && profile.name === workerProfileName
+        && current.status === "directory_missing")) {
       failedProfiles.push(current.status === "directory_missing"
         ? { name: profile.name, reason: "profile_disappeared" }
         : profileManifestFailure(profile.name));
@@ -420,12 +457,16 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
       if (result.status !== 0
         || result.error
         || current.status !== "valid"
-        || !profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)) {
+        || !profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)
+        || (profile.name === workerProfileName
+          && !profileIsHeadlessCapable(current.profile))) {
         failedProfiles.push(profileMutationFailure(
           profile.name,
           result,
           current,
-          "dsh_bundle_not_activated",
+          profile.name === workerProfileName
+            ? "headless_profile_not_capable"
+            : "dsh_bundle_not_activated",
         ));
         continue;
       }
@@ -450,7 +491,8 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
     }
 
     if (current.status === "valid"
-      && profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)) {
+      && profileHasInstalledAdapter(current.profile, runtimeBundleRoot, pendingState)
+      && (profile.name !== workerProfileName || profileIsHeadlessCapable(current.profile))) {
       installedProfiles.push(profile.name);
     } else {
       failedProfiles.push(profileMutationFailure(
@@ -473,6 +515,11 @@ function ensureDshPluginInstalledUnlocked(paths, options) {
       && !profileHasInstalledAdapter(profile.profile, runtimeBundleRoot, pendingState)) {
       failedProfiles.push({ name: profile.name, reason: "dsh_bundle_not_activated" });
     }
+  }
+  if (!finalProfiles.some((profile) => (
+    profile.status === "valid" && profileIsHeadlessCapable(profile.profile)
+  )) && !failedProfiles.some((failure) => failure.name === workerProfileName)) {
+    failedProfiles.push({ name: workerProfileName, reason: "headless_profile_not_capable" });
   }
   const managedProfiles = finalProfiles
     .filter((profile) => profile.status !== "directory_missing")
@@ -1160,6 +1207,10 @@ function profileHasAdapter(profile, packageName = ADAPTER_PACKAGE_NAME) {
   return Boolean(profile
     && Object.hasOwn(profile.dependencies, packageName)
     && profile.bundles.includes(packageName));
+}
+
+function profileIsHeadlessCapable(profile) {
+  return Boolean(profile?.bundles.includes(HEADLESS_BUNDLE_NAME));
 }
 
 function profileHasInstalledAdapter(
