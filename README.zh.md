@@ -67,6 +67,20 @@ MemoraX User ID、偏好语言和 API Key；首次交互安装时，除非有效
 如果安装过程无法交互，且有效配置尚未提供凭据，npm 包仍会安装，但 MemoraX 搜索、召回和写回
 功能无法使用。
 
+### 安装故障排查
+
+如果首次安装或配置没有正常完成，可以先检查以下常见情况：
+
+| 现象 | 建议处理方式 |
+| --- | --- |
+| 因 Node.js 版本不受支持导致安装失败 | 运行 `node --version` 检查版本，并升级到 Node.js 24 或更高版本后重新安装 MemoraX Code。 |
+| 跳过了交互式配置，或安装过程无法显示配置提示 | 在 `$MEMORAX_CODE_HOME/config.toml` 中配置所需的 MemoraX 参数，或使用文档支持的环境变量，然后运行 `memorax-code start`。 |
+| MemoraX API Key 缺失或尚未配置 | 运行 `memorax-cli status` 检查当前配置，然后通过支持的配置文件或环境变量添加 API Key。不要将 API Key 粘贴到聊天记录或公开 Issue 中。 |
+| 安装完成后搜索、召回或写回仍不可用 | 运行 `memorax-code status` 和 `memorax-cli status`，检查 MemoraX 凭据和 Memory 配置，然后运行 `memorax-code start` 重新启动。 |
+
+有关支持的配置项，请参阅[配置](docs/configuration.md)；
+更详细的诊断步骤请参阅[故障排查](docs/troubleshooting.md)。
+
 ### 体验跨会话记忆
 
 克隆示例仓库，并在项目目录中打开 Codex、Claude Code、DeepSeek Harness 或 OpenCode：
