@@ -268,8 +268,22 @@ async function createFixture() {
   const pidPath = join(memoraxCodeHome, "runtime", "backend", "backend.pid.json");
   const dshCommand = join(root, "fake-dsh.mjs");
   const dshLog = join(root, "dsh.log");
+  const headlessBundleRoot = join(
+    dshHome,
+    "profiles",
+    "node_modules",
+    "@deepseek-ai",
+    "dsh-headless",
+  );
   mkdirSync(profileRoot, { recursive: true });
+  mkdirSync(headlessBundleRoot, { recursive: true });
   mkdirSync(codexHome, { recursive: true });
+  writeJson(join(headlessBundleRoot, "package.json"), {
+    name: "@deepseek-ai/dsh-headless",
+    version: "0.1.0-test",
+    main: "index.js",
+  });
+  writeFileSync(join(headlessBundleRoot, "index.js"), "module.exports = {};\n");
   writeFileSync(profilePath, `${JSON.stringify({
     name: "dsh-profile-headless",
     private: true,
