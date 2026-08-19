@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { commandOnPath } from "../lib/vscode-extension-command.mjs";
@@ -29,6 +29,19 @@ const windowsCliInvocationPath = fileURLToPath(new URL("../lib/windows-cli-invoc
 const smolTomlPath = fileURLToPath(new URL("../../../ts/memorax-code-backend/node_modules/smol-toml", import.meta.url));
 const memoraxCodePluginId = "memorax-code-codex-adapter@memorax-code";
 const memoraxSetupInput = "memorax-user\nzh\nmemorax-secret\n";
+
+async function writeMockNodeCommand(command, source) {
+  const contents = Array.isArray(source) ? source.join("\n") : source;
+  if (process.platform === "win32") {
+    await writeFile(command, contents, { mode: 0o755 });
+    await chmod(command, 0o755);
+    return;
+  }
+  const modulePath = `${command}.mjs`;
+  await writeFile(modulePath, contents, { mode: 0o755 });
+  await chmod(modulePath, 0o755);
+  await symlink(basename(modulePath), command);
+}
 
 function pathWithoutCommand(command, pathValue) {
   return String(pathValue ?? "")
@@ -344,15 +357,14 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     "",
   ].join("\n"), { mode: 0o755 });
   if (codexAvailable) {
-    await writeFile(join(fakeBin, "codex"), [
+    await writeMockNodeCommand(join(fakeBin, "codex"), [
       "#!/usr/bin/env node",
       "import { appendFileSync } from 'node:fs';",
       `appendFileSync(${JSON.stringify(logPath)}, 'codex ' + process.argv.slice(2).join(' ') + '\\n');`,
       "if (process.argv[2] === '--version') console.log('codex 9.9.9-test');",
       "process.exit(0);",
       "",
-    ].join("\n"), { mode: 0o755 });
-    await chmod(join(fakeBin, "codex"), 0o755);
+    ]);
   }
   if (codexAppOnly) {
     const appCodex = process.platform === "win32"
@@ -362,35 +374,32 @@ async function runPostinstall({ existingCache = false, explicitCache = false, ho
     if (process.platform === "win32") {
       await copyFile(process.execPath, appCodex);
     } else {
-      await writeFile(appCodex, [
+      await writeMockNodeCommand(appCodex, [
         "#!/usr/bin/env node",
         "import { appendFileSync } from 'node:fs';",
         `appendFileSync(${JSON.stringify(logPath)}, 'app-codex ' + process.argv.slice(2).join(' ') + '\\n');`,
         "if (process.argv[2] === '--version') console.log('codex-app 9.9.9-test');",
         "process.exit(0);",
         "",
-      ].join("\n"), { mode: 0o755 });
-      await chmod(appCodex, 0o755);
+      ]);
     }
   }
   if (vscodeOnly) {
     await writeMockVsCodeRuntimes({ home, logPath });
   }
   if (claudeAvailable) {
-    await writeFile(join(fakeBin, "claude"), [
+    await writeMockNodeCommand(join(fakeBin, "claude"), [
       "#!/usr/bin/env node",
       "import { appendFileSync } from 'node:fs';",
       `appendFileSync(${JSON.stringify(logPath)}, 'claude ' + process.argv.slice(2).join(' ') + '\\n');`,
       `if (process.argv[2] === '--version') { ${claudeVersionFails ? "console.error('broken Claude CLI'); process.exit(7);" : "console.log('claude 9.9.9-test');"} }`,
       "process.exit(0);",
       "",
-    ].join("\n"), { mode: 0o755 });
-    await chmod(join(fakeBin, "claude"), 0o755);
+    ]);
   }
   if (opencodeCliAvailable) {
     const executable = join(fakeBin, process.platform === "win32" ? "opencode.cmd" : "opencode");
-    await writeFile(executable, "#!/usr/bin/env node\nprocess.exit(0);\n", { mode: 0o755 });
-    await chmod(executable, 0o755);
+    await writeMockNodeCommand(executable, "#!/usr/bin/env node\nprocess.exit(0);\n");
   }
   const cacheMarketplace = existingCache ? "personal" : explicitCache ? "memorax-code" : undefined;
   if (cacheMarketplace) {
@@ -572,24 +581,22 @@ async function writeMockVsCodeRuntimes({ home, logPath }) {
     await copyFile(process.execPath, claudeCommand);
     return;
   }
-  await writeFile(codexCommand, [
+  await writeMockNodeCommand(codexCommand, [
     "#!/usr/bin/env node",
     "import { appendFileSync } from 'node:fs';",
     `appendFileSync(${JSON.stringify(logPath)}, 'vscode-codex ' + process.argv.slice(2).join(' ') + '\\n');`,
     "if (process.argv[2] === '--version') console.log('codex-vscode 9.9.9-test');",
     "process.exit(0);",
     "",
-  ].join("\n"), { mode: 0o755 });
-  await chmod(codexCommand, 0o755);
-  await writeFile(claudeCommand, [
+  ]);
+  await writeMockNodeCommand(claudeCommand, [
     "#!/usr/bin/env node",
     "import { appendFileSync } from 'node:fs';",
     `appendFileSync(${JSON.stringify(logPath)}, 'vscode-claude ' + process.argv.slice(2).join(' ') + '\\n');`,
     "if (process.argv[2] === '--version') console.log('claude-vscode 9.9.9-test');",
     "process.exit(0);",
     "",
-  ].join("\n"), { mode: 0o755 });
-  await chmod(claudeCommand, 0o755);
+  ]);
 }
 
 function vscodeTargetPlatform() {
