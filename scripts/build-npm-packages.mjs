@@ -136,8 +136,8 @@ async function validateSourceManifest() {
   if (typeof manifest.version !== "string" || !manifest.version) {
     throw new Error("main npm package version is required");
   }
-  if (manifest.engines?.node !== ">=24") {
-    throw new Error("main npm package must require Node.js 24 or newer");
+  if (manifest.engines?.node !== ">=20") {
+    throw new Error("main npm package must require Node.js 20 or newer");
   }
 }
 

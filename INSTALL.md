@@ -7,7 +7,7 @@ installation. For a source checkout and contributor setup, see
 
 ## Requirements
 
-- Node.js 24 or newer and npm.
+- Node.js 20 or newer (Node.js 24 LTS recommended) and npm.
 - At least one of Codex, Claude Code, DeepSeek Harness (DSH), OpenCode Desktop,
   or the OpenCode CLI installed in the environment where MemoraX Code will
   run. DSH integration requires at least one existing Profile and `pnpm` on
