@@ -54,7 +54,9 @@ and validation sooner.
 
 Prepare Node.js 20+ (Node.js 24 LTS recommended) and at least one of Codex,
 Claude Code, DeepSeek Harness, or OpenCode. Python 3 is required for Repo
-Memory operations.
+Memory operations. Each coding-agent harness retains its own runtime
+requirements; current DeepSeek Harness releases require Node.js
+`^22.19.0 || >=24.0.0`.
 
 ### Install and Connect
 
