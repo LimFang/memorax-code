@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -95,7 +95,8 @@ test("memorax-code update propagates an explicit home to npm lifecycle scripts",
   try {
     await mkdir(fakeBin, { recursive: true });
     const npmStub = join(fakeBin, "npm");
-    await writeFile(npmStub, [
+    const npmStubModule = `${npmStub}.mjs`;
+    await writeFile(npmStubModule, [
       "#!/usr/bin/env node",
       "import { writeFileSync } from 'node:fs';",
       "writeFileSync(process.env.MEMORAX_CODE_UPDATE_CAPTURE, JSON.stringify({",
@@ -105,7 +106,8 @@ test("memorax-code update propagates an explicit home to npm lifecycle scripts",
       "}));",
       "",
     ].join("\n"));
-    await chmod(npmStub, 0o755);
+    await chmod(npmStubModule, 0o755);
+    await symlink(basename(npmStubModule), npmStub);
 
     const result = spawnSync(
       process.execPath,
