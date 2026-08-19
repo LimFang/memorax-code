@@ -5,7 +5,7 @@ Harness, and OpenCode.
 
 ## Requirements
 
-- Node.js 24 or newer and npm.
+- Node.js 20 or newer (Node.js 24 LTS recommended) and npm.
 - At least one of Codex, Claude Code, DeepSeek Harness, OpenCode Desktop, or
   the OpenCode CLI.
 - A MemoraX account, Base User ID, and API key for memory features.
