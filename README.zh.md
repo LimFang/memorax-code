@@ -22,7 +22,7 @@
   <a href="https://code.memorax.net/"><img src="https://img.shields.io/badge/website-code.memorax.net-2563eb" alt="MemoraX Code 产品网站"></a>
   <a href="https://www.npmjs.com/package/@memorax/memorax-code"><img src="https://img.shields.io/npm/v/@memorax/memorax-code.svg" alt="npm 版本"></a>
   <img src="https://img.shields.io/npm/v/@memorax/memorax-code.svg?label=version&color=f59e0b" alt="npm 包版本">
-  <img src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&logoColor=white" alt="Node.js 24 或更高版本">
+  <img src="https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white" alt="Node.js 20 或更高版本">
 </p>
 
 <p align="center">
@@ -47,8 +47,10 @@ MemoraX Code 让 Codex、Claude Code、DeepSeek Harness 和 OpenCode 共享一�
 
 ## 快速开始
 
-开始前，请确保已安装 Node.js 24 或更高版本，以及 Codex、Claude Code、DeepSeek Harness 或 OpenCode
-中的至少一个。Repo Memory 操作还需要 Python 3。
+开始前，请确保已安装 Node.js 20 或更高版本（推荐 Node.js 24 LTS），以及 Codex、Claude Code、
+DeepSeek Harness 或 OpenCode 中的至少一个。Repo Memory 操作还需要 Python 3。各 Coding Agent
+Harness 仍需满足自身的运行时要求；当前 DeepSeek Harness 版本要求 Node.js
+`^22.19.0 || >=24.0.0`。
 
 ### 安装与接入
 
@@ -78,7 +80,7 @@ MemoraX User ID、偏好语言和 API Key；首次交互安装时，除非有效
 
 | 现象 | 建议处理方式 |
 | --- | --- |
-| 因 Node.js 版本不受支持导致安装失败 | 运行 `node --version` 检查版本，并升级到 Node.js 24 或更高版本后重新安装 MemoraX Code。 |
+| 因 Node.js 版本不受支持导致安装失败 | 运行 `node --version` 检查版本，并升级到 Node.js 20 或更高版本后重新安装 MemoraX Code。 |
 | 跳过了交互式配置，或安装过程无法显示配置提示 | 在 `$MEMORAX_CODE_HOME/config.toml` 中配置所需的 MemoraX 参数，或使用文档支持的环境变量，然后运行 `memorax-code start`。 |
 | MemoraX API Key 缺失或尚未配置 | 运行 `memorax-cli status` 检查当前配置，然后通过支持的配置文件或环境变量添加 API Key。不要将 API Key 粘贴到聊天记录或公开 Issue 中。 |
 | 安装完成后搜索、召回或写回仍不可用 | 运行 `memorax-code status` 和 `memorax-cli status`，检查 MemoraX 凭据和 Memory 配置，然后运行 `memorax-code start` 重新启动。 |

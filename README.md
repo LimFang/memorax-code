@@ -22,7 +22,7 @@
   <a href="https://code.memorax.net/"><img src="https://img.shields.io/badge/website-code.memorax.net-2563eb" alt="MemoraX Code website"></a>
   <a href="https://www.npmjs.com/package/@memorax/memorax-code"><img src="https://img.shields.io/npm/v/@memorax/memorax-code.svg" alt="npm version"></a>
   <img src="https://img.shields.io/npm/v/@memorax/memorax-code.svg?label=version&color=f59e0b" alt="npm package version">
-  <img src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&logoColor=white" alt="Node.js 24 or newer">
+  <img src="https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white" alt="Node.js 20 or newer">
 </p>
 
 <p align="center">
@@ -52,8 +52,11 @@ and validation sooner.
 
 ## Quick Start
 
-Prepare Node.js 24+ and at least one of Codex, Claude Code, DeepSeek Harness,
-or OpenCode. Python 3 is required for Repo Memory operations.
+Prepare Node.js 20+ (Node.js 24 LTS recommended) and at least one of Codex,
+Claude Code, DeepSeek Harness, or OpenCode. Python 3 is required for Repo
+Memory operations. Each coding-agent harness retains its own runtime
+requirements; current DeepSeek Harness releases require Node.js
+`^22.19.0 || >=24.0.0`.
 
 ### Install and Connect
 
@@ -88,7 +91,7 @@ If the initial setup does not work as expected, check these common cases:
 
 | Symptom | Recommended fix |
 | --- | --- |
-| Installation fails with an unsupported Node.js version | Run `node --version` and upgrade to Node.js 24 or later before reinstalling MemoraX Code. |
+| Installation fails with an unsupported Node.js version | Run `node --version` and upgrade to Node.js 20 or later before reinstalling MemoraX Code. |
 | Interactive setup was skipped or could not prompt | Configure the required MemoraX values in `$MEMORAX_CODE_HOME/config.toml` or through the documented environment variables, then run `memorax-code start`. |
 | MemoraX API key is missing or not configured | Run `memorax-cli status` to check the current configuration, then add the API key through the supported configuration or environment variables. Never paste the key into chats or public issues. |
 | Search, retrieval, or writeback is unavailable after installation | Run `memorax-code status` and `memorax-cli status`. Verify the MemoraX credentials and memory settings, then restart with `memorax-code start`. |

@@ -59,7 +59,7 @@ assert "npm install -g @memorax/memorax-code --foreground-scripts" in readme
 assert license_text == Path("LICENSE").read_text()
 assert package_manifest["name"] == "@memorax/memorax-code"
 assert package_manifest["license"] == "MIT"
-assert package_manifest.get("engines", {}).get("node") == ">=24"
+assert package_manifest.get("engines", {}).get("node") == ">=20"
 assert "LICENSE" in package_manifest["files"]
 expected_bins = {
     "memorax-code": "bin/memorax-code.mjs",

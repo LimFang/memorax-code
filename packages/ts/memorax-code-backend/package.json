@@ -17,7 +17,7 @@
     "test:memory-viewer": "npm run build && node --test --test-timeout=5000 --test-force-exit test/viewer/http/memory-viewer-routes.test.mjs"
   },
   "devDependencies": {
-    "@types/node": "^24.13.2",
+    "@types/node": "^20.0.0",
     "typescript": "^5.9.0"
   },
   "dependencies": {
