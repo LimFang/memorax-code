@@ -19,7 +19,8 @@ explicit command/context value > environment variable > config.toml > code fallb
 ```
 
 Use `config.toml` for durable choices and environment variables for temporary
-overrides or credentials that should not be written to disk. After editing the
+overrides. Both account-free and existing-account setup write the effective API
+key to this private file so the connection can be reused. After editing the
 file, run:
 
 ```sh
@@ -42,7 +43,7 @@ The generated template selects all four client integrations, disables automatic
 retrieval, enables automatic writeback, sets the preferred language to Chinese
 (`zh`), uses a five-turn skill reminder and the adaptive repository-update
 policy, and enables content-bearing local traces for Codex, Claude Code, and
-OpenCode. npm installation may narrow `[clients]` to clients detected on the
+OpenCode. Foreground setup may narrow `[clients]` to clients detected on the
 host. The tables below list all fallbacks, including tuning fields omitted from
 the generated file.
 
@@ -64,24 +65,61 @@ comma-separated subset:
 --clients codex|claude|dsh|opencode|<comma-separated subset>|all|none
 ```
 
-A normal npm install or reinstall refreshes `[clients]` from the available
-clients detected at that time. OpenCode is available when its explicit, XDG,
-or default configuration directory exists, or when `opencode` is on `PATH`.
+Foreground `memorax-code setup` refreshes `[clients]` from the clients
+available at that time. OpenCode is available when its explicit, XDG, or
+default configuration directory exists, or when `opencode` is on `PATH`.
 DSH is available when at least one valid Profile exists under
 `$DSH_HOME/profiles`; `DSH_HOME` defaults to `~/.dsh`. An explicit
 `[clients].dsh = false` is preserved.
-Update-mode postinstall runs preserve enabled
-clients and also probe each disabled client. An interactive update offers each
-runnable disabled integration for activation with a default of yes. Declining
-the prompt, or running non-interactively, keeps that integration disabled. A
-selected client that is temporarily unavailable also remains selected in the
-configuration instead of being permanently disabled. When an update newly
-enables Codex, it requests initial Hook activation after the client-selection
-prompt.
+
+On later setup runs, enabled client intent is preserved. Each newly available
+disabled client is offered for activation with a default of yes; declining
+keeps it disabled. A selected client that is temporarily unavailable remains
+selected instead of being permanently disabled. Direct npm installation does
+not detect clients or modify `[clients]`.
 
 Client selection controls managed client-integration lifecycle only. It does
 not change Codex, Claude Code, DSH, or OpenCode provider settings.
 `--clients none` runs the Backend without managing a client integration.
+
+## Setup and package-transition state
+
+npm installation and foreground setup are separate operations.
+`npm install -g @memorax/memorax-code` installs or replaces package files
+without reading terminal input. `memorax-code setup` owns client detection,
+connection setup, configuration writes, Codex Hook activation or review, and
+final readiness checks.
+
+Default setup reuses a complete effective connection. Otherwise it detects the
+logged-in operating-system username and maps the system language to `zh` or
+`en`, asking only when a value cannot be detected safely. It then creates or
+restores an account-free credential and writes its API key to `config.toml`.
+`memorax-code setup --existing-account` bypasses automatic reuse and accepts
+an existing connection's username and API key. `--reconfigure` bypasses reuse
+and follows the account-free path again.
+
+Successful setup writes a private versioned record at:
+
+```text
+$MEMORAX_CODE_HOME/runtime/setup/setup-completion.json
+```
+
+The record controls only no-argument CLI routing. When it is absent,
+`memorax-code` points to `memorax-code setup`; when valid, the command shows
+status. Invalid and unsupported records fail closed. A complete product
+uninstall removes this marker while retaining `config.toml`; stop and partial
+client uninstall preserve it.
+
+Replacing a running managed Backend uses a separate private record:
+
+```text
+$MEMORAX_CODE_HOME/runtime/install/package-transition.json
+```
+
+Preinstall records and retires the running installation. Postinstall restores
+and verifies it before consuming the record. A fresh or already-stopped
+installation has no transition and remains stopped. Do not edit either runtime
+record by hand.
 
 ## DeepSeek Harness integration paths
 
@@ -145,7 +183,7 @@ MemoraX is the required remote-memory service:
 ```toml
 [memorax]
 endpoint = "https://platform.memorax.net"
-user_id = "your-base-user-id"
+user_id = "your-username"
 api_key = "your-api-key"
 # timeout_ms = 5000
 # startup_timeout_ms = 3000
@@ -154,8 +192,8 @@ api_key = "your-api-key"
 | Field | Environment override | Fallback |
 | --- | --- | --- |
 | `endpoint` | `MEMORAX_CODE_MEMORAX_ENDPOINT` | `https://platform.memorax.net` |
-| `user_id` | `MEMORAX_CODE_MEMORAX_USER_ID` | required |
-| `api_key` | `MEMORAX_CODE_MEMORAX_API_KEY` | required |
+| `user_id` | `MEMORAX_CODE_MEMORAX_USER_ID` | required username |
+| `api_key` | `MEMORAX_CODE_MEMORAX_API_KEY` | required; setup writes it |
 | `timeout_ms` | `MEMORAX_CODE_MEMORAX_TIMEOUT_MS` | `5000` ms |
 | `startup_timeout_ms` | `MEMORAX_CODE_MEMORAX_STARTUP_TIMEOUT_MS` | `3000` ms |
 
@@ -164,7 +202,7 @@ selected memory operation to the HTTPS endpoint. Override `endpoint` only with
 a compatible MemoraX service you trust.
 
 `startup_timeout_ms` controls synchronous automatic retrieval and is capped at
-10 seconds. `user_id` is a base identity; MemoraX Code derives a
+10 seconds. `user_id` is the configured username; MemoraX Code derives a
 repository-scoped identity for Git workspaces and a folder-scoped identity for
 non-Git workspaces. It never falls back to the unscoped base identity.
 
@@ -341,6 +379,8 @@ token. Persistent connection, token, and PID records live under
   read or parsed; memory readers may also warn. Unsupported field types are
   ignored.
 - Targeted configuration updates preserve unrelated and unknown TOML content.
+- Setup writes completion only after Backend, client, and effective MemoraX
+  readiness checks succeed.
 - Invalid or unsupported Backend runtime records fail closed instead of
   silently falling back to `127.0.0.1:8787`.
 
