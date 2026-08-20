@@ -8,31 +8,20 @@ Harness, and OpenCode.
 - Node.js 20 or newer (Node.js 24 LTS recommended) and npm.
 - At least one of Codex, Claude Code, DeepSeek Harness, OpenCode Desktop, or
   the OpenCode CLI.
-- A MemoraX account, Base User ID, and API key for memory features.
 - Python 3 only for Repo Memory operations.
 
 ## Install
 
-Create an API key in
-[MemoraX Console](https://platform.memorax.net/), then run:
-
 ```bash
-npm install -g @memorax/memorax-code --foreground-scripts
+npm install -g @memorax/memorax-code
+memorax-code setup
 ```
 
-Keep `--foreground-scripts` so npm displays the complete setup.
-
-The installer automatically detects available Codex, Claude Code, DeepSeek
-Harness, and OpenCode installations and configures those it finds. Follow the
-prompts to enter your MemoraX user ID, preferred language, and API key. On an
-interactive first install, a non-empty user ID and API key are required unless
-the effective configuration already supplies both. When Codex is detected,
-review and approve its Hook activation.
-
-Entering the MemoraX credentials after the installer's disclosure enables the
-core memory features and automatic writeback. If installation cannot prompt
-and effective credentials are not already configured, the package remains
-installed, but MemoraX-backed memory is not configured.
+Setup automatically detects supported coding agents and completes an
+account-free connection. If you already have a MemoraX account, run
+`memorax-code setup --existing-account` instead. Later setup runs reuse a
+complete saved configuration; use `memorax-code setup --reconfigure` to
+replace it.
 
 After the first installation, restart or refresh the detected coding agents
 before opening a new session. In Codex, enable **MemoraX Code Codex Adapter**
