@@ -41,6 +41,10 @@ const rootLibFiles = new Set([
   "lib/resolve-claude-command.mjs",
   "lib/resolve-codex-command.mjs",
   "lib/run-entrypoint.mjs",
+  "lib/trial-plugin-mark.mjs",
+  "lib/trial-provision-client.mjs",
+  "lib/trial-provision-flow.mjs",
+  "lib/trial-setup.mjs",
   "lib/vscode-extension-command.mjs",
   "lib/windows-cli-invocation.mjs",
 ]);
