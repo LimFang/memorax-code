@@ -19,6 +19,14 @@ test("single npm package layout accepts declared paths and rejects unknown trees
   assert.equal(isAllowedNpmPackPath("lib/dsh-plugin-install.mjs"), true);
   assert.equal(isAllowedNpmPackPath("lib/resolve-claude-command.mjs"), true);
   assert.equal(isAllowedNpmPackPath("lib/vscode-extension-command.mjs"), true);
+  for (const name of [
+    "trial-plugin-mark.mjs",
+    "trial-provision-client.mjs",
+    "trial-provision-flow.mjs",
+    "trial-setup.mjs",
+  ]) {
+    assert.equal(isAllowedNpmPackPath(`lib/${name}`), true);
+  }
   assert.equal(isAllowedNpmPackPath("lib/memorax-code-adapter-common/src/memorax-code-config-file.mjs"), true);
   assert.equal(
     isAllowedNpmPackPath("lib/memorax-code-adapter-common/src/credentials/trial-credential-store.mjs"),
