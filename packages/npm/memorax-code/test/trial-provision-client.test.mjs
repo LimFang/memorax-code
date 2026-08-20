@@ -112,6 +112,20 @@ test("provision maps response-envelope and HTTP failures without exposing respon
     assert.equal(error.retryAfterMs, 2_000);
     return true;
   });
+
+  const retryAt = new Date(Date.now() + 60_000).toUTCString();
+  const dated = createTrialProvisionClient({
+    env: {},
+    fetchImpl: async () => jsonResponse({ success: false, error: null }, {
+      status: 429,
+      headers: { "retry-after": retryAt },
+    }),
+  });
+  await assert.rejects(dated.provision(REQUEST), (error) => {
+    assert.equal(error.reason, "rate_limit_exceeded");
+    assert.ok(error.retryAfterMs > 0 && error.retryAfterMs <= 60_000);
+    return true;
+  });
 });
 
 test("provision maps non-JSON HTTP failures by status", async () => {
@@ -142,21 +156,43 @@ test("provision rejects unsafe service and TLS configuration", () => {
     () => createTrialProvisionClient({ env: { NODE_TLS_REJECT_UNAUTHORIZED: "0" } }),
     clientError("tls_unsafe"),
   );
+  const previousTlsSetting = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  try {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    assert.throws(
+      () => createTrialProvisionClient({ env: {} }),
+      clientError("tls_unsafe"),
+    );
+  } finally {
+    if (previousTlsSetting === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previousTlsSetting;
+  }
 });
 
 test("provision bounds response size", async () => {
-  const client = createTrialProvisionClient({
-    env: {},
-    maxResponseBytes: 128,
-    fetchImpl: async () => new Response("x".repeat(129), {
-      status: 200,
-      headers: {
-        "content-type": "application/json",
-        "content-length": "129",
-      },
-    }),
-  });
-  await assert.rejects(client.provision(REQUEST), clientError("response_too_large"));
+  for (const headers of [{ "content-length": "129" }, {}]) {
+    const client = createTrialProvisionClient({
+      env: {},
+      maxResponseBytes: 128,
+      fetchImpl: async () => new Response("x".repeat(129), {
+        status: 200,
+        headers,
+      }),
+    });
+    await assert.rejects(client.provision(REQUEST), clientError("response_too_large"));
+  }
+});
+
+test("provision preserves timeout and caller aborts while reading the response", async () => {
+  const fetchImpl = async (_url, options) => stalledResponse(options.signal);
+  const timed = createTrialProvisionClient({ env: {}, fetchImpl, timeoutMs: 10 });
+  await assert.rejects(timed.provision(REQUEST), clientError("timeout"));
+
+  const controller = new AbortController();
+  const aborted = createTrialProvisionClient({ env: {}, fetchImpl });
+  const pending = aborted.provision(REQUEST, { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, clientError("aborted"));
 });
 
 function jsonResponse(body, options = {}) {
@@ -167,6 +203,14 @@ function jsonResponse(body, options = {}) {
       ...options.headers,
     },
   });
+}
+
+function stalledResponse(signal) {
+  return new Response(new ReadableStream({
+    start(controller) {
+      signal.addEventListener("abort", () => controller.error(signal.reason), { once: true });
+    },
+  }));
 }
 
 function clientError(reason) {
