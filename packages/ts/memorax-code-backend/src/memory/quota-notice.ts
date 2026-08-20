@@ -250,7 +250,7 @@ function quotaNotice(
 ): string {
   if (language === "zh") {
     const quotaName = quota.featureCode === "memory_write" ? "记忆写入" : "记忆搜索";
-    const quotaStatus = level === 0 ? "已用完" : `剩余约 ${level}%`;
+    const quotaStatus = level === 0 ? "已用完" : `剩余不超过 ${level}%`;
     if (quota.limit !== ANONYMOUS_QUOTA_LIMIT) {
       return [
         `额度提醒：您的 MemoraX Code ${quotaName}额度${quotaStatus}。`,
@@ -267,7 +267,7 @@ function quotaNotice(
   const quotaName = quota.featureCode === "memory_write" ? "memory write" : "memory search";
   const quotaStatus = level === 0
     ? "has been used up"
-    : `has approximately ${level}% remaining`;
+    : `has ${level}% or less remaining`;
   if (quota.limit !== ANONYMOUS_QUOTA_LIMIT) {
     return [
       `Quota reminder: Your MemoraX Code ${quotaName} quota ${quotaStatus}.`,

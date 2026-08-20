@@ -111,8 +111,8 @@ must not be disabled by
 ## Quota reminder and Mark ID
 
 Memory write and memory search reminders are tracked independently. A reminder
-is emitted when the corresponding remaining quota reaches approximately 10%
-and again at 0%; raw quota counts are not shown.
+is emitted when the corresponding remaining quota reaches 10% or less and
+again at 0%; raw quota counts are not shown.
 
 Routine reminders do not include a complete Mark ID. If this device uses an
 unregistered anonymous identity and the MemoraX account page requires its Mark
