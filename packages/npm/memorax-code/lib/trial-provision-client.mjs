@@ -6,7 +6,6 @@ const MAX_RETRY_AFTER_MS = 120_000;
 const MARK_ID_PATTERN = /^mk_[0-9a-f]{64}$/;
 const API_KEY_PATTERN = /^sk_[A-Za-z0-9_-]{43}$/;
 const MACHINE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
-const ARCH_PATTERN = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const ERROR_REASONS = new Set([
   "invalid_options",
@@ -209,7 +208,7 @@ function validateRequest(request) {
     || !MACHINE_ID_PATTERN.test(snapshot.machineId ?? "")
     || !validText(snapshot.hostname, 120)
     || !["windows", "linux", "macos"].includes(snapshot.platform)
-    || !ARCH_PATTERN.test(snapshot.arch ?? "")
+    || !["x86_64", "arm64"].includes(snapshot.arch)
     || !SHA256_PATTERN.test(snapshot.macHash ?? "")) {
     throw clientError("invalid_request");
   }
