@@ -18,6 +18,7 @@ const RECORD_KEYS = Object.freeze([
 const RECORD_KEY_SET = new Set(RECORD_KEYS);
 const MARK_ID_PATTERN = /^mk_[0-9a-f]{64}$/;
 const MACHINE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const ARCH_PATTERN = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 const API_KEY_PATTERN = /^sk_[A-Za-z0-9_-]{43}$/;
 const DECIMAL_PUBLIC_ID_PATTERN = /^[0-9]+$/;
@@ -137,7 +138,9 @@ function validateRecord(value) {
   if (!["windows", "linux", "macos"].includes(snapshot.platform)) {
     fail("invalid_platform");
   }
-  if (!["x86_64", "arm64"].includes(snapshot.arch)) fail("invalid_arch");
+  if (typeof snapshot.arch !== "string" || !ARCH_PATTERN.test(snapshot.arch)) {
+    fail("invalid_arch");
+  }
   if (typeof snapshot.mac_hash !== "string"
     || !SHA256_HEX_PATTERN.test(snapshot.mac_hash)) {
     fail("invalid_mac_hash");
