@@ -94,6 +94,15 @@ are credentials and must not be logged or published. Account, project, and
 device-mark metadata remain only in secure credential storage and are not
 written to the user configuration file.
 
+Quota-reminder deduplication is stored separately in a private local runtime
+record containing a one-way connection fingerprint and reminder levels, never
+a raw API key or Mark ID. Routine quota reminders, status, and diagnostics do
+not expose the complete Mark ID. When registration requires it, the user can
+explicitly run `memorax-code account --show-mark-id` directly in a local
+terminal. That command prints the Mark ID but not the API key. Do not ask an
+Agent to run it, paste its output into a conversation, or include it in
+screenshots or logs.
+
 MemoraX-backed search, retrieval, and writeback require a Base User ID, API
 key, and network access. Foreground setup discloses automatic writeback before
 creating or accepting credentials. Completing setup activates search/add and
@@ -134,9 +143,9 @@ The packaged default uses `https://platform.memorax.net`. An endpoint override
 is a separate trust decision; configure only a compatible MemoraX service you
 trust.
 
-Treat the MemoraX API key, Base User ID, repository identity, queries, selected
-writeback content, and saved memories as sensitive. Disable writes immediately
-with:
+Treat the MemoraX API key, trial Mark ID, Base User ID, repository identity,
+queries, selected writeback content, and saved memories as sensitive. Disable
+writes immediately with:
 
 ```bash
 MEMORAX_CODE_MEMORAX_WRITEBACK_ENABLED=false
