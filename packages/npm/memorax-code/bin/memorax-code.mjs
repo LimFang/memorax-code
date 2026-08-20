@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { stagePackagedClientHookRuntime } from "../lib/client-hook-runtime.mjs";
 import { unsupportedNodeVersionMessage } from "../lib/node-version.mjs";
 import { resolveNpmInvocation } from "../lib/npm-invocation.mjs";
@@ -35,6 +35,38 @@ Options:
   --home DIR  Update the Backend managed under this MemoraX Code home
   --dry-run   Print the npm command without running it
   -h, --help  Show this help message`);
+}
+
+function printMainHelp() {
+  console.log(`Usage: memorax-code [command] [options]
+
+Commands:
+  setup       Run or repair the interactive setup
+  start       Reconcile selected integrations and start the Backend
+  status      Show Backend and integration status
+  stop        Stop the Backend and selected integrations
+  restart     Restart the Backend and selected integrations
+  update      Update the globally installed npm package
+  uninstall   Remove managed integrations and the npm package
+  logs        Show Backend logs
+  token       Manage the local Backend token
+
+Run \`memorax-code setup\` to complete first-time setup or repair an installation.
+Run \`memorax-code\` with no command to show setup guidance or current status.
+Run \`memorax-code <command> --help\` for command-specific options.`);
+}
+
+function printSetupHelp() {
+  console.log(`Usage: memorax-code setup [--existing-account | --reconfigure] [--home DIR]
+
+Run interactive setup to configure or repair MemoraX Code. A complete existing
+configuration is reused automatically.
+
+Options:
+  --existing-account  Configure an existing account instead of anonymous access
+  --reconfigure       Re-detect memory preferences instead of reusing configuration
+  --home DIR           Configure the specified MemoraX Code home
+  -h, --help           Show this help message`);
 }
 
 function printCommand(command, args) {
@@ -98,7 +130,6 @@ async function runUpdateCommand(args) {
   const channel = requestedChannel ?? (pkg.version.includes("-") ? "preview" : "latest");
   const npmArgs = ["install", "-g", `${pkg.name}@${channel}`];
   if (force) npmArgs.push("--force");
-  npmArgs.push("--foreground-scripts");
 
   if (dryRun) {
     printCommand("npm", npmArgs);
@@ -120,11 +151,10 @@ async function runUpdateCommand(args) {
     env: {
       ...process.env,
       PWD: cwd,
-      MEMORAX_CODE_NPM_POSTINSTALL_UPDATE: "1",
       ...(requestedHome ? { MEMORAX_CODE_HOME: requestedHome } : {}),
     },
   });
-  return await new Promise((resolve) => {
+  const npmExitCode = await new Promise((resolve) => {
     child.on("error", (error) => {
       console.error(`memorax-code update: failed to start npm: ${error.message}`);
       resolve(1);
@@ -132,6 +162,150 @@ async function runUpdateCommand(args) {
     child.on("close", (code, signal) => {
       if (signal) {
         console.error(`memorax-code update: npm exited from signal ${signal}`);
+        resolve(1);
+      } else {
+        resolve(code ?? 1);
+      }
+    });
+  });
+  if (npmExitCode !== 0) return npmExitCode;
+
+  const memoraxCodeHome = requestedHome ?? requestedMemoraxCodeHome([]);
+  if (!existsSync(join(memoraxCodeHome, "runtime", "backend", "backend.pid.json"))) {
+    console.error("memorax-code update: package updated; the managed Backend remains stopped; run `memorax-code setup` from a terminal to review client and Hook changes");
+    return 0;
+  }
+  if (!setupCanPrompt()) {
+    console.error("memorax-code update: package updated; run `memorax-code setup` from a terminal to review client and Hook changes");
+    return 0;
+  }
+  return await runSetupCommand(["--home", memoraxCodeHome], { updateMode: true });
+}
+
+async function runSetupCommand(args, { updateMode = false } = {}) {
+  if (args.includes("--help") || args.includes("-h")) {
+    printSetupHelp();
+    return 0;
+  }
+  let memoraxCodeHome;
+  let setupMode;
+  try {
+    memoraxCodeHome = requestedMemoraxCodeHome(args);
+    setupMode = parseSetupMode(args);
+  } catch (error) {
+    console.error(`memorax-code setup: ${error instanceof Error ? error.message : String(error)}`);
+    printSetupHelp();
+    return 2;
+  }
+  if (!setupCanPrompt()) {
+    console.error("memorax-code setup: an interactive terminal is required");
+    return 1;
+  }
+  try {
+    const { withSetupCompletionLock } = await loadSetupCompletionApi();
+    return await withSetupCompletionLock(memoraxCodeHome, async (completion) => {
+      if (updateMode && completion.status === "absent") {
+        console.error("memorax-code update: package updated; setup has not been completed; run `memorax-code setup` from an interactive terminal");
+        return 0;
+      }
+      if (updateMode) {
+        console.error("memorax-code update: reviewing client and Hook changes in the foreground");
+      }
+      return await spawnSetupProcess(memoraxCodeHome, {
+        updateMode,
+        setupMode,
+      });
+    });
+  } catch (error) {
+    console.error(`memorax-code setup: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+}
+
+async function routeDefaultCommand() {
+  const memoraxCodeHome = requestedMemoraxCodeHome([]);
+  try {
+    const { readSetupCompletionRecord, setupCompletionPath } = await loadSetupCompletionApi();
+    const state = readSetupCompletionRecord(memoraxCodeHome);
+    if (state.status === "absent") {
+      console.error("memorax-code: setup has not been completed. Run `memorax-code setup` from an interactive terminal.");
+      return 1;
+    }
+    if (state.status !== "valid") {
+      const detail = state.status === "unsupported"
+        ? `uses unsupported version ${state.version}`
+        : `is invalid (${state.reason})`;
+      console.error(`memorax-code: setup completion record ${detail}: ${setupCompletionPath(memoraxCodeHome)}`);
+      console.error("Inspect or repair this private record before running setup again.");
+      return 1;
+    }
+    process.argv.splice(2, 0, "status");
+    return undefined;
+  } catch (error) {
+    console.error(`memorax-code: unable to inspect setup state: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+}
+
+function parseSetupMode(args) {
+  let setupMode = "automatic";
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--existing-account" || arg === "--reconfigure") {
+      const requestedMode = arg === "--existing-account" ? "existing-account" : "reconfigure";
+      if (setupMode !== "automatic" && setupMode !== requestedMode) {
+        throw new Error("--existing-account and --reconfigure cannot be used together");
+      }
+      setupMode = requestedMode;
+    } else if (arg === "--home") {
+      const value = args[++index];
+      if (!value || value.startsWith("--")) throw new Error("--home requires a directory");
+    } else if (arg.startsWith("--home=")) {
+      if (!arg.slice("--home=".length).trim()) throw new Error("--home requires a directory");
+    } else {
+      throw new Error(`unknown option ${arg}`);
+    }
+  }
+  return setupMode;
+}
+
+function setupCanPrompt() {
+  return truthyEnv(process.env.MEMORAX_CODE_SETUP_ASSUME_INTERACTIVE)
+    || (process.stdin.isTTY === true && process.stderr.isTTY === true);
+}
+
+async function loadSetupCompletionApi() {
+  const modulePath = join(
+    packageRoot(),
+    "lib",
+    "memorax-code-adapter-common",
+    "src",
+    "setup-completion.mjs",
+  );
+  return await import(pathToFileURL(modulePath).href);
+}
+
+async function spawnSetupProcess(memoraxCodeHome, { updateMode = false, setupMode = "automatic" } = {}) {
+  const env = {
+    ...process.env,
+    MEMORAX_CODE_HOME: memoraxCodeHome,
+  };
+  delete env.MEMORAX_CODE_SETUP_UPDATE;
+  delete env.MEMORAX_CODE_SETUP_MODE;
+  if (updateMode) env.MEMORAX_CODE_SETUP_UPDATE = "1";
+  if (setupMode !== "automatic") env.MEMORAX_CODE_SETUP_MODE = setupMode;
+  const child = spawn(process.execPath, [join(packageRoot(), "bin", "memorax-code-setup.mjs")], {
+    stdio: "inherit",
+    env,
+  });
+  return await new Promise((resolve) => {
+    child.on("error", (error) => {
+      console.error(`memorax-code setup: failed to start setup: ${error.message}`);
+      resolve(1);
+    });
+    child.on("close", (code, signal) => {
+      if (signal) {
+        console.error(`memorax-code setup: setup exited from signal ${signal}`);
         resolve(1);
       } else {
         resolve(code ?? 1);
@@ -148,6 +322,20 @@ if (process.argv[2] === "--version" || process.argv[2] === "-v") {
   const pkg = readPackageJson();
   console.log(`memorax-code ${pkg.version}`);
   process.exit(0);
+}
+
+if (process.argv.length === 3 && (process.argv[2] === "--help" || process.argv[2] === "-h")) {
+  printMainHelp();
+  process.exit(0);
+}
+
+if (process.argv[2] === "setup") {
+  process.exit(await runSetupCommand(process.argv.slice(3)));
+}
+
+if (process.argv.length === 2) {
+  const exitCode = await routeDefaultCommand();
+  if (exitCode !== undefined) process.exit(exitCode);
 }
 
 if (shouldStageClientHookRuntime(process.argv.slice(2))

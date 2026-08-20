@@ -14,11 +14,16 @@ test("single npm package layout accepts declared paths and rejects unknown trees
   assert.equal(isAllowedNpmPackPath("LICENSE"), true);
   assert.equal(isAllowedNpmPackPath("bin/memorax-cli.mjs"), true);
   assert.equal(isAllowedNpmPackPath("bin/memorax-code-npm-preinstall.mjs"), true);
+  assert.equal(isAllowedNpmPackPath("bin/memorax-code-plugin-postinstall.mjs"), true);
+  assert.equal(isAllowedNpmPackPath("bin/memorax-code-setup.mjs"), true);
   assert.equal(isAllowedNpmPackPath("bin/memorax-code-opencode.mjs"), true);
   assert.equal(isAllowedNpmPackPath("lib/node-version.mjs"), true);
   assert.equal(isAllowedNpmPackPath("lib/dsh-plugin-install.mjs"), true);
+  assert.equal(isAllowedNpmPackPath("lib/package-transition.mjs"), true);
   assert.equal(isAllowedNpmPackPath("lib/resolve-claude-command.mjs"), true);
   assert.equal(isAllowedNpmPackPath("lib/vscode-extension-command.mjs"), true);
+  assert.equal(isAllowedNpmPackPath("lib/setup-memory-preferences.mjs"), true);
+  assert.equal(isAllowedNpmPackPath("lib/setup-reconcile.mjs"), true);
   for (const name of [
     "trial-plugin-mark.mjs",
     "trial-provision-client.mjs",
