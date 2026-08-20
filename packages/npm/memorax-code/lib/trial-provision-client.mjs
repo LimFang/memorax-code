@@ -46,7 +46,10 @@ export function createTrialProvisionClient(options = {}) {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   if (typeof fetchImpl !== "function") throw clientError("invalid_options");
   const env = isRecord(options.env) ? options.env : process.env;
-  if (env.NODE_TLS_REJECT_UNAUTHORIZED === "0") throw clientError("tls_unsafe");
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0"
+    || env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+    throw clientError("tls_unsafe");
+  }
   const timeoutMs = positiveInteger(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 120_000);
   const maxResponseBytes = positiveInteger(
     options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES,
@@ -130,15 +133,7 @@ async function readResponse(response, maxResponseBytes) {
     throw clientError("response_too_large", { httpStatus: status });
   }
 
-  let text;
-  try {
-    text = await response.text();
-  } catch {
-    throw clientError("invalid_response", { httpStatus: status });
-  }
-  if (Buffer.byteLength(text, "utf8") > maxResponseBytes) {
-    throw clientError("response_too_large", { httpStatus: status });
-  }
+  const text = await readResponseBody(response, maxResponseBytes, status);
 
   let body;
   try {
@@ -153,6 +148,34 @@ async function readResponse(response, maxResponseBytes) {
   if (!isRecord(body)) throw clientError("invalid_response", { httpStatus: status });
   if (body.success !== true) throw responseError(status, response, body);
   return body;
+}
+
+async function readResponseBody(response, maxResponseBytes, status) {
+  if (response.body == null) return "";
+  const reader = response.body.getReader?.();
+  if (!reader || typeof reader.read !== "function") {
+    throw clientError("invalid_response", { httpStatus: status });
+  }
+  const chunks = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) {
+        throw clientError("invalid_response", { httpStatus: status });
+      }
+      byteLength += value.byteLength;
+      if (byteLength > maxResponseBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw clientError("response_too_large", { httpStatus: status });
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  return Buffer.concat(chunks, byteLength).toString("utf8");
 }
 
 function responseError(status, response, body) {
@@ -236,14 +259,23 @@ function validateServiceBaseUrl(value) {
 }
 
 function retryAfterDelay(header, body) {
-  const headerSeconds = typeof header === "string" && /^\d+$/.test(header.trim())
-    ? Number(header.trim())
-    : undefined;
+  const headerText = typeof header === "string" ? header.trim() : "";
+  let headerDelay;
+  if (/^\d+$/.test(headerText)) {
+    headerDelay = Number(headerText) * 1000;
+  } else if (headerText) {
+    const retryAt = Date.parse(headerText);
+    if (Number.isFinite(retryAt)) headerDelay = Math.max(0, retryAt - Date.now());
+  }
+  if (Number.isSafeInteger(headerDelay) && headerDelay <= MAX_RETRY_AFTER_MS) {
+    return headerDelay;
+  }
   const bodySeconds = isRecord(body) && isRecord(body.error)
     ? body.error.retry_after_seconds
     : undefined;
-  const seconds = Number.isSafeInteger(headerSeconds) ? headerSeconds : bodySeconds;
-  const delay = Number.isSafeInteger(seconds) && seconds >= 0 ? seconds * 1000 : undefined;
+  const delay = Number.isSafeInteger(bodySeconds) && bodySeconds >= 0
+    ? bodySeconds * 1000
+    : undefined;
   return Number.isSafeInteger(delay) && delay <= MAX_RETRY_AFTER_MS ? delay : undefined;
 }
 
