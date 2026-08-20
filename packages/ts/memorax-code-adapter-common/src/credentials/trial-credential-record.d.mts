@@ -10,7 +10,7 @@ type TrialCredentialIdentity = Readonly<{
   machine_id: string;
   hostname: string;
   platform: "windows" | "linux" | "macos";
-  arch: "x86_64" | "arm64";
+  arch: string;
   mac_hash: string;
 }>;
 
@@ -68,7 +68,7 @@ export function createInitialTrialCredentialRecord(options: Readonly<{
   machineId: string;
   hostname: string;
   platform: "windows" | "linux" | "macos";
-  arch: "x86_64" | "arm64";
+  arch: string;
   macHash: string;
 }>): TrialCredentialRecord;
 
