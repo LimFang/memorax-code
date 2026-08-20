@@ -40,6 +40,14 @@ Please allow time for triage and remediation before public disclosure.
 - Hook, lifecycle, connection, PID, token, session, and workspace authority
   records are security-sensitive local state. Do not hand-edit or publish
   them.
+- npm lifecycle scripts do not prompt for credentials, authorize Hooks, or
+  perform first-time setup. They only retire and restore an already-running
+  managed Backend during package replacement. Credential entry, disclosure,
+  client selection, and Hook review belong to foreground
+  `memorax-code setup` in the logged-in user's interactive terminal.
+- Setup-completion and package-transition records are versioned private
+  authority. Invalid or unsupported records fail closed instead of silently
+  treating a partial setup or interrupted package replacement as complete.
 - The managed OpenCode plugin may recover an unavailable Backend only through
   its package-recorded Node runtime and absolute `memorax-code` command, and
   the currently resolved loopback HTTP authority. It preserves the existing
@@ -79,15 +87,18 @@ The trial-provisioning client sends a versioned device mark and the device
 attributes required by the provision contract to the configured MemoraX
 service. MemoraX returns the API key and account/project assignment; the API
 key is not generated locally. The complete provisioning record is stored by
-the current user's platform credential backend and must not be logged,
-published, or copied between machines. Account, project, and device-mark
-metadata are not written to the user configuration file.
+the current user's platform credential backend. Foreground setup also writes
+the returned API key to the private `config.toml` so the effective connection
+can be reused and managed with the normal configuration surface. Both copies
+are credentials and must not be logged or published. Account, project, and
+device-mark metadata remain only in secure credential storage and are not
+written to the user configuration file.
 
 MemoraX-backed search, retrieval, and writeback require a Base User ID, API
-key, and network access. The installer discloses automatic writeback before
-accepting credentials. Entering valid credentials activates search/add and
-the generated configuration's automatic writeback; automatic retrieval remains
-disabled until explicitly enabled.
+key, and network access. Foreground setup discloses automatic writeback before
+creating or accepting credentials. Completing setup activates search/add and
+the generated configuration's automatic writeback; automatic retrieval
+remains disabled until explicitly enabled.
 
 Memory searches send the query and repository-scoped identity to MemoraX.
 When DSH or OpenCode automatic retrieval is enabled, each eligible direct user
@@ -182,9 +193,12 @@ memorax-code uninstall
 This stops the managed Backend, removes managed client integrations, and
 removes the global npm package when possible. For DSH it removes only the
 managed MemoraX Code plugin from Profiles; the Profiles and their session data
-remain owned by DSH. It intentionally retains:
+remain owned by DSH. A complete product uninstall clears the setup-completion
+record so a later installation requires foreground setup again. It
+intentionally retains:
 
-- `MEMORAX_CODE_HOME`, including configuration and local traces;
+- `MEMORAX_CODE_HOME`, including configuration, secure account-free
+  credentials, and local traces;
 - Claude plugin data;
 - client provider configuration; and
 - memories already stored in MemoraX.

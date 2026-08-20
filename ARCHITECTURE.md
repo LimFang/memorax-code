@@ -99,12 +99,12 @@ relationships; the arrow labels distinguish them. It is not an import graph.
 | Component | Stable responsibility | Must not own | Primary evidence |
 | --- | --- | --- | --- |
 | `packages/ts/memorax-code-backend` | Local service, Hook HTTP, native client-content interpretation, memory workflows, repository scope, MemoraX adapter, trace, local Viewer with a content-free public HTTP surface, writeback reconciliation, and lifecycle | Model execution, client model-provider credentials, or native transcript creation | `packages/ts/memorax-code-backend/src/app/backend-server.ts`, `packages/ts/memorax-code-backend/src/memory/service.ts`, and the capability directories under `src` |
-| `packages/ts/memorax-code-adapter-common` | Shared source for Backend connection authority, private runtime and secure credential records, cross-process locking and configuration, Hook generations, Hook launch helpers, and Repo/Personal Memory helpers | Backend composition, native transcript interpretation, MemoraX request execution, or client plugin policy | `packages/ts/memorax-code-adapter-common/src/backend-connection.mjs`, `src/runtime-record.mjs`, `src/credentials`, `src/hooks`, and `src/repo-memory` |
+| `packages/ts/memorax-code-adapter-common` | Shared source for Backend connection authority, private runtime, setup-completion and secure credential records, cross-process locking and configuration, Hook generations, Hook launch helpers, and Repo/Personal Memory helpers | Backend composition, native transcript interpretation, MemoraX request execution, or client plugin policy | `packages/ts/memorax-code-adapter-common/src/backend-connection.mjs`, `src/runtime-record.mjs`, `src/setup-completion.mjs`, `src/credentials`, `src/hooks`, and `src/repo-memory` |
 | `packages/ts/memorax-code-codex-adapter` | Codex plugin artifact, Hook shells and runtimes, session/workspace observation, diagnostics, and the canonical shared skill | Codex rollout semantics or Backend-side writeback authority | `.codex-plugin`, `hooks`, `runtime-hooks`, `src`, and `skills/memorax-code` |
 | `packages/ts/memorax-code-claude-adapter` | Claude Code plugin artifact, Hook shells and runtimes, configuration, installer, marketplace source, and diagnostics | Claude transcript semantics or Backend memory orchestration | `.claude-plugin`, `hooks`, `runtime-hooks`, `scripts`, and `src/plugin-install.mjs` |
 | `packages/ts/memorax-code-dsh-adapter` | DSH Cordis Turn listener, personal-context composition, shared-skill and supervised Repo Memory integration, exact persisted-event interval validation, local Backend wire protocol, Profile lifecycle, per-user runtime-bundle materialization, and durable runtime authority | Backend-side event interpretation, MemoraX request execution, or DSH provider and session ownership | `src/plugin.mjs`, `src/profile-lifecycle.mjs`, `hooks/repo-memory-job.mjs`, and the adapter tests |
 | `packages/ts/memorax-code-opencode-adapter` | OpenCode plugin runtime, managed thin-loader installation, automatic retrieval, SDK-backed writeback, shell-session identity, workspace runtime evidence and diagnostics, a materialized shared skill, and supervised Repo Memory maintenance and missing-bundle initialization | OpenCode message interpretation inside the Backend or model-provider configuration | `src/plugin.mjs`, `src/plugin-install.mjs`, `src/cli.mjs`, `src/repo-memory-server-runner.mjs`, and the OpenCode materialization mapping in `scripts/npm-source-files.mjs` |
-| `packages/npm/memorax-code` | Installed executable wrappers, trial identity and credential provisioning, update, preinstall/postinstall, npm manifest, and release-package source | Backend lifecycle semantics, uninstall orchestration, or artifact staging | `bin`, `lib/trial-setup.mjs`, `lib/run-entrypoint.mjs`, and `package.json` |
+| `packages/npm/memorax-code` | Installed executable wrappers, foreground setup and reconciliation, trial identity and credential provisioning, package-transition handling, update, npm lifecycle scripts, manifest, and release-package source | Backend lifecycle semantics, uninstall orchestration, or artifact staging | `bin`, `lib/setup-reconcile.mjs`, `lib/package-transition.mjs`, `lib/trial-setup.mjs`, `lib/run-entrypoint.mjs`, and `package.json` |
 | `scripts` | Backend build orchestration, staging/materialization, package layout, documentation, and local-only data gates | Product runtime authority | Package-build/check scripts and executable contract scripts |
 | `.github` | Issue and pull-request contribution templates | Product runtime behavior | `.github/ISSUE_TEMPLATE` and `.github/pull_request_template.md` |
 
@@ -149,26 +149,54 @@ operations for live client sessions.
 
 ```mermaid
 sequenceDiagram
+  participant User
   participant NPM as npm pre/postinstall
-  participant CLI as installed memorax-code CLI
+  participant Transition as package-transition record
+  participant Setup as foreground setup CLI
+  participant Completion as setup-completion record
   participant Generation as Hook runtime generation
   participant Lifecycle as Backend lifecycle
   participant Participants as client participants
   participant Service as managed Backend
 
-  NPM->>CLI: retire an existing managed Backend before replacement
-  NPM->>NPM: detect clients and reconcile configuration
-  NPM->>Generation: stage a Hook runtime generation
-  NPM->>CLI: start or reconcile selected integrations
-  CLI->>Lifecycle: acquire lifecycle authority and execute command
+  opt managed Backend was running before package replacement
+    NPM->>Transition: record replacement intent
+    NPM->>Lifecycle: retire old managed Backend
+    NPM->>Lifecycle: restore and verify updated Backend
+    NPM->>Transition: consume successful replacement
+  end
+  User->>Setup: memorax-code setup
+  Setup->>Setup: detect clients and configure connection
+  Setup->>Generation: stage a Hook runtime generation
+  Setup->>Lifecycle: reconcile selected integrations
   Lifecycle->>Participants: prepare client integrations
   Lifecycle->>Service: start and verify readiness
   Lifecycle-->>Generation: activate only after accepted readiness
+  Setup->>Completion: commit only after final verification
 ```
+
+npm lifecycle and foreground setup are separate authority boundaries. Fresh
+or stopped package installation is non-interactive and leaves the Backend
+stopped. When package replacement finds a running managed Backend, preinstall
+records and retires that installation; postinstall restores it with retained
+client intent and consumes the transition only after status succeeds. npm
+lifecycle never detects new clients, accepts credentials, or authorizes Hooks.
+
+`memorax-code setup` owns disclosure, memory preferences, credential creation
+or entry, client discovery, Hook review, Backend reconciliation, and final
+verification. It requires an interactive terminal. A versioned completion
+record is committed only after setup succeeds; the no-argument CLI uses that
+record solely to choose between setup guidance and current status. Invalid or
+unsupported completion and package-transition records fail closed.
 
 The principal control-plane locations are:
 
-- `packages/npm/memorax-code/bin` for installed package scripts and wrappers;
+- `packages/npm/memorax-code/bin` for installed package scripts, foreground
+  setup, and wrappers;
+- `packages/npm/memorax-code/lib/package-transition.mjs` for npm replacement
+  intent and restoration;
+- `packages/ts/memorax-code-adapter-common/src/setup-completion.mjs` for the
+  shared setup-completion record;
 - `packages/ts/memorax-code-backend/src/entrypoints/backend-cli.ts` for
   process-facing command orchestration;
 - `packages/ts/memorax-code-backend/src/lifecycle` for start, stop, restart,
@@ -227,12 +255,12 @@ live Backend health check. This evidence proves only that the plugin executed
 in a workspace; it is not session, transcript, repository-scope, or lifecycle
 authority.
 
-The npm layer derives the versioned trial device identity, calls the MemoraX
-trial-provision endpoint, and commits the returned API key and account metadata
-through adapter-common's secure credential port. The secure credential record
-is authoritative for provisioning reuse; only the API key is eligible for
-projection into user configuration. Account, project, and device-mark metadata
-remain in secure credential storage and do not replace the configured
+Foreground setup in the npm layer derives the versioned trial device identity,
+calls the MemoraX trial-provision endpoint, and commits the returned API key and
+account metadata through adapter-common's secure credential port. The secure
+credential record is authoritative for provisioning reuse; setup also projects
+the API key into private user configuration. Account, project, and device-mark
+metadata remain in secure credential storage and do not replace the configured
 repository-scoped memory identity.
 
 ### 3.2 Hook and retrieval data flow
@@ -585,6 +613,8 @@ and
 | Automatic writeback content | Codex rollout JSONL, Claude Code transcript JSONL, DSH's exact persisted Session Event Log interval, or OpenCode SDK session messages for the matching client and Turn | Hook or plugin text, trace, latest-Turn guesses, local database guesses, and another client's format are not fallbacks |
 | Workspace and repository identity | Backend read-only resolution held by the live repository-session runtime; its only permitted scope transition is the same-root degraded-direct-`.git` to verified-Git upgrade | Project labels, Viewer catalog entries, and Hook `cwd` |
 | Backend connection and managed-process ownership | Versioned private connection/token/PID records plus lifecycle lock/version validation | In-memory state in any one process |
+| Package replacement intent | Versioned private package-transition record plus its bounded lock | npm process state or the presence of installed package files |
+| Completed foreground setup | Versioned private setup-completion record written after final verification | Configuration-file presence, Backend liveness, or detected clients |
 | MemoraX memory result and asynchronous task state | Normalized response from `provider/memorax` | Observability, trace, Viewer, and task projections |
 | Persisted current-turn operational state and trace history | Client-qualified local trace records | Viewer summaries and diagnostics; not native content or general Turn-identity authority |
 | Repo Memory bundle | Repository-local `.repo_memory` files produced by the supervised job | Backend readiness and client-injected guidance |
@@ -600,12 +630,12 @@ Ephemeral process state includes active HTTP requests, turn coordination,
 repository-session bindings, in-flight provider operations, Viewer projection
 caches, and background reconciliation promises.
 
-Durable local state includes configuration, private runtime and trial
-credential records, active client selection, client-qualified trace JSONL,
-reminder cadence state, and Repo Memory. State shared across processes requires
-a bounded lock, atomic replacement, or version validation appropriate to its
-record. An in-memory
-mutex is not cross-process authority.
+Durable local state includes configuration, private runtime, setup-completion,
+package-transition and trial credential records, active client selection,
+client-qualified trace JSONL, reminder cadence state, and Repo Memory. State
+shared across processes requires a bounded lock, atomic replacement, or
+version validation appropriate to its record. An in-memory mutex is not
+cross-process authority.
 
 Backend-owned remote memory state is limited to MemoraX memories and
 asynchronous writeback tasks. The provider adapter is the network boundary for
