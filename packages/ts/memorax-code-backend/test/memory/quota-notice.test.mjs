@@ -23,13 +23,13 @@ test("quota notices persist percentage levels for every MemoraX connection", asy
     claimQuotaNotice(config, quota("memory_write", 1_000), options),
   ]);
   assert.equal(concurrent.filter(Boolean).length, 1);
-  assert.match(concurrent.find(Boolean), /memory write quota has approximately 10% remaining/i);
+  assert.match(concurrent.find(Boolean), /memory write quota has 10% or less remaining/i);
   assert.equal(await claimQuotaNotice(config, quota("memory_write", 999), options), undefined);
   assert.match(await claimQuotaNotice(config, quota("memory_write", 0), options), /quota has been used up/i);
 
   assert.match(await claimQuotaNotice(config, quota("memory_search", 1_000), options), /memory search quota/i);
   assert.equal(await claimQuotaNotice(config, quota("memory_write", 10_000), options), undefined);
-  assert.match(await claimQuotaNotice(config, quota("memory_write", 1_000), options), /approximately 10% remaining/i);
+  assert.match(await claimQuotaNotice(config, quota("memory_write", 1_000), options), /10% or less remaining/i);
 });
 
 test("anonymous quota reminders include localized claim guidance without raw counts", async () => {
@@ -42,7 +42,7 @@ test("anonymous quota reminders include localized claim guidance without raw cou
   const options = { env: {}, transitionState };
   const writeNotice = await claimQuotaNotice(
     accountConfig("zh"),
-    { featureCode: "memory_write", remaining: 10, limit: 100 },
+    { featureCode: "memory_write", remaining: 1, limit: 100 },
     options,
   );
   const searchNotice = await claimQuotaNotice(
@@ -51,8 +51,8 @@ test("anonymous quota reminders include localized claim guidance without raw cou
     options,
   );
 
-  assert.match(writeNotice, /^额度提醒：您的 MemoraX Code 记忆写入额度剩余约 10%。/);
-  assert.match(searchNotice, /^额度提醒：您的 MemoraX Code 记忆搜索额度剩余约 10%。/);
+  assert.match(writeNotice, /^额度提醒：您的 MemoraX Code 记忆写入额度剩余不超过 10%。/);
+  assert.match(searchNotice, /^额度提醒：您的 MemoraX Code 记忆搜索额度剩余不超过 10%。/);
   for (const notice of [writeNotice, searchNotice]) {
     assert.match(notice, /请访问 https:\/\/platform\.memorax\.net\/ 查看额度、注册或管理账户。/);
     assert.match(notice, /尚未注册的匿名身份/);
