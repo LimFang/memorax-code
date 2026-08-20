@@ -615,6 +615,7 @@ and
 | Backend connection and managed-process ownership | Versioned private connection/token/PID records plus lifecycle lock/version validation | In-memory state in any one process |
 | Package replacement intent | Versioned private package-transition record plus its bounded lock | npm process state or the presence of installed package files |
 | Completed foreground setup | Versioned private setup-completion record written after final verification | Configuration-file presence, Backend liveness, or detected clients |
+| Quota-reminder deduplication | Versioned private local runtime record keyed by a one-way connection fingerprint; normalized MemoraX balances remain authoritative for the quota amount | Account registration status, raw API keys, and in-memory reminder state are not quota-reminder authority |
 | MemoraX memory result and asynchronous task state | Normalized response from `provider/memorax` | Observability, trace, Viewer, and task projections |
 | Persisted current-turn operational state and trace history | Client-qualified local trace records | Viewer summaries and diagnostics; not native content or general Turn-identity authority |
 | Repo Memory bundle | Repository-local `.repo_memory` files produced by the supervised job | Backend readiness and client-injected guidance |
@@ -632,10 +633,10 @@ caches, and background reconciliation promises.
 
 Durable local state includes configuration, private runtime, setup-completion,
 package-transition and trial credential records, active client selection,
-client-qualified trace JSONL, reminder cadence state, and Repo Memory. State
-shared across processes requires a bounded lock, atomic replacement, or
-version validation appropriate to its record. An in-memory mutex is not
-cross-process authority.
+client-qualified trace JSONL, reminder cadence and quota-reminder state, and
+Repo Memory. State shared across processes requires a bounded lock, atomic
+replacement, or version validation appropriate to its record. An in-memory
+mutex is not cross-process authority.
 
 Backend-owned remote memory state is limited to MemoraX memories and
 asynchronous writeback tasks. The provider adapter is the network boundary for

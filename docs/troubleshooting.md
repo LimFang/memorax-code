@@ -108,6 +108,26 @@ search. Automatic writeback requires `[memory.writeback] enabled = true` and
 must not be disabled by
 `MEMORAX_CODE_MEMORAX_WRITEBACK_ENABLED=false`.
 
+## Quota reminder and Mark ID
+
+Memory write and memory search reminders are tracked independently. A reminder
+is emitted when the corresponding remaining quota reaches approximately 10%
+and again at 0%; raw quota counts are not shown.
+
+Routine reminders do not include a complete Mark ID. If this device uses an
+unregistered anonymous identity and the MemoraX account page requires its Mark
+ID, run this command yourself in a local terminal:
+
+```sh
+memorax-code account --show-mark-id
+```
+
+The command reads a ready local trial identity and prints only its Mark ID. Do
+not ask an Agent to run it or paste the output into a conversation, screenshot,
+or log. If no ready local trial identity exists, use `memorax-code setup`; a
+connection copied from another computer does not include that computer's
+device-local Mark ID.
+
 ## Backend does not start
 
 ```sh
