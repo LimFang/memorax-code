@@ -70,6 +70,7 @@ flowchart LR
   OpenCodeAdapter -. "artifact source" .-> Build
   Build -->|"assembles"| Artifact
   Artifact -->|"launches"| Backend
+  Artifact -->|"trial provision"| MemoraX
 
   Backend --> Common
   CodexAdapter --> Common
@@ -103,7 +104,7 @@ relationships; the arrow labels distinguish them. It is not an import graph.
 | `packages/ts/memorax-code-claude-adapter` | Claude Code plugin artifact, Hook shells and runtimes, configuration, installer, marketplace source, and diagnostics | Claude transcript semantics or Backend memory orchestration | `.claude-plugin`, `hooks`, `runtime-hooks`, `scripts`, and `src/plugin-install.mjs` |
 | `packages/ts/memorax-code-dsh-adapter` | DSH Cordis Turn listener, personal-context composition, shared-skill and supervised Repo Memory integration, exact persisted-event interval validation, local Backend wire protocol, Profile lifecycle, per-user runtime-bundle materialization, and durable runtime authority | Backend-side event interpretation, MemoraX request execution, or DSH provider and session ownership | `src/plugin.mjs`, `src/profile-lifecycle.mjs`, `hooks/repo-memory-job.mjs`, and the adapter tests |
 | `packages/ts/memorax-code-opencode-adapter` | OpenCode plugin runtime, managed thin-loader installation, automatic retrieval, SDK-backed writeback, shell-session identity, workspace runtime evidence and diagnostics, a materialized shared skill, and supervised Repo Memory maintenance and missing-bundle initialization | OpenCode message interpretation inside the Backend or model-provider configuration | `src/plugin.mjs`, `src/plugin-install.mjs`, `src/cli.mjs`, `src/repo-memory-server-runner.mjs`, and the OpenCode materialization mapping in `scripts/npm-source-files.mjs` |
-| `packages/npm/memorax-code` | Installed executable wrappers, update, preinstall/postinstall, npm manifest, and release-package source | Backend lifecycle semantics, uninstall orchestration, or artifact staging | `bin`, `lib/run-entrypoint.mjs`, and `package.json` |
+| `packages/npm/memorax-code` | Installed executable wrappers, trial identity and credential provisioning, update, preinstall/postinstall, npm manifest, and release-package source | Backend lifecycle semantics, uninstall orchestration, or artifact staging | `bin`, `lib/trial-setup.mjs`, `lib/run-entrypoint.mjs`, and `package.json` |
 | `scripts` | Backend build orchestration, staging/materialization, package layout, documentation, and local-only data gates | Product runtime authority | Package-build/check scripts and executable contract scripts |
 | `.github` | Issue and pull-request contribution templates | Product runtime behavior | `.github/ISSUE_TEMPLATE` and `.github/pull_request_template.md` |
 
@@ -225,6 +226,14 @@ OpenCode doctor combines managed-artifact status, that local evidence, and a
 live Backend health check. This evidence proves only that the plugin executed
 in a workspace; it is not session, transcript, repository-scope, or lifecycle
 authority.
+
+The npm layer derives the versioned trial device identity, calls the MemoraX
+trial-provision endpoint, and commits the returned API key and account metadata
+through adapter-common's secure credential port. The secure credential record
+is authoritative for provisioning reuse; only the API key is eligible for
+projection into user configuration. Account, project, and device-mark metadata
+remain in secure credential storage and do not replace the configured
+repository-scoped memory identity.
 
 ### 3.2 Hook and retrieval data flow
 
@@ -591,10 +600,11 @@ Ephemeral process state includes active HTTP requests, turn coordination,
 repository-session bindings, in-flight provider operations, Viewer projection
 caches, and background reconciliation promises.
 
-Durable local state includes configuration, private runtime records, active
-client selection, client-qualified trace JSONL, reminder cadence state, and Repo
-Memory. State shared across processes requires a bounded lock, atomic
-replacement, or version validation appropriate to its record. An in-memory
+Durable local state includes configuration, private runtime and trial
+credential records, active client selection, client-qualified trace JSONL,
+reminder cadence state, and Repo Memory. State shared across processes requires
+a bounded lock, atomic replacement, or version validation appropriate to its
+record. An in-memory
 mutex is not cross-process authority.
 
 Backend-owned remote memory state is limited to MemoraX memories and
