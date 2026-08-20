@@ -75,6 +75,14 @@ Please allow time for triage and remediation before public disclosure.
 
 ### MemoraX memory traffic
 
+The trial-provisioning client sends a versioned device mark and the device
+attributes required by the provision contract to the configured MemoraX
+service. MemoraX returns the API key and account/project assignment; the API
+key is not generated locally. The complete provisioning record is stored by
+the current user's platform credential backend and must not be logged,
+published, or copied between machines. Account, project, and device-mark
+metadata are not written to the user configuration file.
+
 MemoraX-backed search, retrieval, and writeback require a Base User ID, API
 key, and network access. The installer discloses automatic writeback before
 accepting credentials. Entering valid credentials activates search/add and
