@@ -44,7 +44,7 @@ test("memorax-code update preserves the installed release channel", async (t) =>
         assert.equal(result.status, 0, result.stderr);
         assert.equal(
           result.stdout.trim(),
-          `npm install -g @memorax/memorax-code@${channel} --foreground-scripts`,
+          `npm install -g @memorax/memorax-code@${channel}`,
         );
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -60,14 +60,14 @@ test("memorax-code update supports explicit channel selection and force", async 
     assert.equal(latest.status, 0, latest.stderr);
     assert.equal(
       latest.stdout.trim(),
-      "npm install -g @memorax/memorax-code@latest --foreground-scripts",
+      "npm install -g @memorax/memorax-code@latest",
     );
 
     const previewForce = runUpdate(root, "--force", "--preview", "--dry-run");
     assert.equal(previewForce.status, 0, previewForce.stderr);
     assert.equal(
       previewForce.stdout.trim(),
-      "npm install -g @memorax/memorax-code@preview --force --foreground-scripts",
+      "npm install -g @memorax/memorax-code@preview --force",
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -85,7 +85,7 @@ test("memorax-code update rejects conflicting channels", async () => {
   }
 });
 
-test("memorax-code update propagates an explicit home to npm lifecycle scripts", {
+test("memorax-code update propagates an explicit home to package transition scripts", {
   skip: process.platform === "win32",
 }, async () => {
   const root = await createPackageFixture("0.0.1");
@@ -102,7 +102,6 @@ test("memorax-code update propagates an explicit home to npm lifecycle scripts",
       "writeFileSync(process.env.MEMORAX_CODE_UPDATE_CAPTURE, JSON.stringify({",
       "  args: process.argv.slice(2),",
       "  memoraxCodeHome: process.env.MEMORAX_CODE_HOME,",
-      "  updateMode: process.env.MEMORAX_CODE_NPM_POSTINSTALL_UPDATE,",
       "}));",
       "",
     ].join("\n"));
@@ -128,10 +127,8 @@ test("memorax-code update propagates an explicit home to npm lifecycle scripts",
         "install",
         "-g",
         "@memorax/memorax-code@latest",
-        "--foreground-scripts",
       ],
       memoraxCodeHome,
-      updateMode: "1",
     });
   } finally {
     await rm(root, { recursive: true, force: true });
