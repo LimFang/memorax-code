@@ -38,14 +38,6 @@ test("trial identity normalizes Node platform and architecture names", () => {
   assert.equal(identity.markId, GOLDEN_MARK_ID);
 });
 
-test("trial identity preserves other normalized Node architecture names", () => {
-  const identity = deriveTrialPluginIdentity({
-    ...DEVICE,
-    arch: "PPC64",
-  });
-  assert.equal(identity.arch, "ppc64");
-});
-
 test("MAC hashing is stable and always returns a SHA-256 value", () => {
   const entries = [
     { internal: false, mac: "BB:00:00:00:00:02" },

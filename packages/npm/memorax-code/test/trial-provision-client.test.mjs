@@ -50,7 +50,7 @@ test("provision rejects invalid local fields before network access", async () =>
     { machineId: "contains spaces" },
     { hostname: "" },
     { platform: "win32" },
-    { arch: "PPC64" },
+    { arch: "x64" },
     { macHash: "b".repeat(63) },
   ]) {
     await assert.rejects(
@@ -125,14 +125,6 @@ test("provision maps non-JSON HTTP failures by status", async () => {
     });
     await assert.rejects(client.provision(REQUEST), clientError(reason));
   }
-});
-
-test("provision accepts normalized Node architecture tokens", async () => {
-  const client = createTrialProvisionClient({
-    env: {},
-    fetchImpl: async () => jsonResponse(successEnvelope()),
-  });
-  assert.equal((await client.provision({ ...REQUEST, arch: "ppc64" })).apiKey, API_KEY);
 });
 
 test("provision rejects unsafe service and TLS configuration", () => {

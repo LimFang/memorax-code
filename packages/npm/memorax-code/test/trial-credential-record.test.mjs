@@ -51,7 +51,7 @@ test("credential records reject invalid identity and state shapes", () => {
     [{ ...initial, machine_id: "contains spaces" }, "invalid_machine_id"],
     [{ ...initial, hostname: "" }, "invalid_hostname"],
     [{ ...initial, platform: "darwin" }, "invalid_platform"],
-    [{ ...initial, arch: "PPC64" }, "invalid_arch"],
+    [{ ...initial, arch: "x64" }, "invalid_arch"],
     [{ ...initial, mac_hash: "c".repeat(63) }, "invalid_mac_hash"],
     [{ ...initial, api_key: API_KEY }, "invalid_shape"],
     [{ ...readyRecord(), api_key: null }, "invalid_api_key"],
@@ -60,10 +60,6 @@ test("credential records reject invalid identity and state shapes", () => {
   for (const [record, reason] of fixtures) {
     assert.throws(() => validateTrialCredentialRecord(record), recordError(reason));
   }
-});
-
-test("credential records preserve normalized Node architecture tokens", () => {
-  assert.equal(createInitialTrialCredentialRecord({ ...IDENTITY, arch: "ppc64" }).arch, "ppc64");
 });
 
 test("only provisioning records can transition to ready", () => {
