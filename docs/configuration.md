@@ -201,6 +201,12 @@ MemoraX requests send the API key and the query or content required by the
 selected memory operation to the HTTPS endpoint. Override `endpoint` only with
 a compatible MemoraX service you trust.
 
+Quota reminders keep only a one-way connection fingerprint and the last
+notified level for memory write and memory search under the private runtime
+directory. They do not store a raw API key, Mark ID, or account-registration
+state. The returned quota limit is used only to decide whether to include
+conditional anonymous-account guidance.
+
 `startup_timeout_ms` controls synchronous automatic retrieval and is capped at
 10 seconds. `user_id` is the configured username; MemoraX Code derives a
 repository-scoped identity for Git workspaces and a folder-scoped identity for
