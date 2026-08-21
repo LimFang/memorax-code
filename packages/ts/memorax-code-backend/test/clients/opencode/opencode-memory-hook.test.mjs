@@ -175,9 +175,10 @@ test("OpenCode finalizes an explicit MessageAbortedError without writeback", asy
   }
 });
 
-test("OpenCode runtime reuses retrieval, scope, and automatic writeback", async () => {
+test("OpenCode runtime reuses retrieval, scope, writeback, and quota notices", async () => {
   const memoraxCodeHome = await mkdtemp(join(tmpdir(), "memorax-code-opencode-runtime-"));
   const requests = [];
+  let searchCalls = 0;
   const runtime = createOpenCodeMemoryHookRuntime({
     memoraxCodeHome,
     env: {
@@ -190,10 +191,12 @@ test("OpenCode runtime reuses retrieval, scope, and automatic writeback", async 
       MEMORAX_CODE_MEMORAX_API_KEY: "secret",
       MEMORAX_CODE_MEMORAX_USER_ID: "user-1",
     },
+    claimQuotaNotice: async (_config, quota) => `${quota.featureCode}: ${quota.remaining}`,
     fetchImpl: async (url, init) => {
       const request = { url: String(url), body: JSON.parse(init.body) };
       requests.push(request);
       const searching = request.url.endsWith("/v1/memories/search");
+      if (searching) searchCalls += 1;
       return new Response(JSON.stringify(searching ? {
         success: true,
         data: {
@@ -205,10 +208,15 @@ test("OpenCode runtime reuses retrieval, scope, and automatic writeback", async 
             score: 0.9,
             metadata: { memory_type: "core" },
           }],
+          ...(searchCalls === 1 ? { balances: [quotaBalance("memory_search", 10)] } : {}),
         },
       } : {
         success: true,
-        data: { task_id: "writeback-1", status: "queued" },
+        data: {
+          task_id: "writeback-1",
+          status: "queued",
+          balances: [quotaBalance("memory_write", 9)],
+        },
       }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -226,6 +234,8 @@ test("OpenCode runtime reuses retrieval, scope, and automatic writeback", async 
       workspaceKind: "project",
     });
     assert.match(start.additionalContext, /shared retrieval runtime/);
+    assert.equal(start.userNotice, "memory_search: 10");
+    assert.doesNotMatch(start.additionalContext, /memory_search/);
 
     assert.deepEqual(await runtime.writeback({
       version: 1,
@@ -246,6 +256,18 @@ test("OpenCode runtime reuses retrieval, scope, and automatic writeback", async 
       { role: "user", content: "OpenCode user prompt." },
       { role: "assistant", content: "OpenCode assistant reply." },
     ]);
+
+    const next = await runtime.recordTurnStart({
+      version: 1,
+      client: "opencode",
+      sessionId: "session-1",
+      userMessageId: "user-2",
+      prompt: "OpenCode second prompt.",
+      cwd: TEST_WORKSPACE,
+      workspaceKind: "project",
+    });
+    assert.equal(next.userNotice, "memory_write: 9");
+    assert.doesNotMatch(next.additionalContext, /memory_write/);
   } finally {
     runtime.close();
     await rm(memoraxCodeHome, { recursive: true, force: true });
@@ -274,6 +296,19 @@ function openCodeMessages() {
       parts: [textPart("assistant-1", "OpenCode assistant reply.")],
     },
   ];
+}
+
+function quotaBalance(featureCode, remaining) {
+  return {
+    product_code: "memory_api",
+    feature_code: featureCode,
+    spec_key: "calls",
+    quota_unit: "times",
+    quota_limit: 100,
+    reserved: 0,
+    consumed: 0,
+    remaining,
+  };
 }
 
 function textPart(messageID, text) {

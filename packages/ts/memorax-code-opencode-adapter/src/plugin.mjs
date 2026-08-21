@@ -210,6 +210,7 @@ export function createMemoraxOpenCodePlugin(options = {}) {
           }, TURN_START_TIMEOUT_MS);
           turnStartAccepted = true;
           if (!pluginEnabled(options)) return;
+          void showUserNotice(client, directory, result?.userNotice, options);
           repositoryWorktree = stringValue(result?.repoMemoryWorktree);
           const repoMemoryEnv = openCodeRepoMemoryEnv(options, openCodeServerUrl, sessionId);
           if (repoMemoryEnv) {
@@ -382,6 +383,25 @@ function appendSystemContexts(output, ...contexts) {
   if (additions.length === 0) return;
   const existing = stringValue(output?.message?.system);
   output.message.system = [existing, ...additions].filter(Boolean).join("\n\n");
+}
+
+async function showUserNotice(client, directory, notice, options) {
+  const message = stringValue(notice);
+  if (!message || typeof client?.tui?.showToast !== "function") return;
+  try {
+    await client.tui.showToast({
+      body: {
+        title: "MemoraX Code",
+        message,
+        variant: "warning",
+        duration: 10_000,
+      },
+      query: { directory },
+      throwOnError: true,
+    });
+  } catch (error) {
+    debug(options, "opencode quota reminder failed", error);
+  }
 }
 
 function recordReminder(options, reminder) {

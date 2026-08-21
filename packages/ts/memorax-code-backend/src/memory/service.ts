@@ -80,6 +80,7 @@ export function createMemoryService(options: MemoryServiceOptions = {}): MemoryS
   });
   const openCodeHook = createOpenCodeMemoryHookRuntime({
     ...options,
+    pendingQuotaNotice,
     repositoryMemorySession,
     turnCoordinator,
   });

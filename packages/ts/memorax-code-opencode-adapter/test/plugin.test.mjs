@@ -40,6 +40,45 @@ test("chat.message retrieves memory and injects it into the system prompt", asyn
   });
 });
 
+test("chat.message shows userNotice without blocking or injecting it into model context", async () => {
+  const toastCalls = [];
+  const plugin = createPluginWithoutReminders({
+    backendConnection: { url: "http://127.0.0.1:8787" },
+    fetchImpl: responseSequence([], [{
+      ok: true,
+      additionalContext: "Retrieved memory context.",
+      userNotice: "Quota reminder: Memory search has 10% or less remaining.",
+    }]),
+  });
+  const hooks = await plugin(pluginInput({
+    client: {
+      session: { async messages() { return { data: [] }; } },
+      tui: {
+        showToast(options) {
+          toastCalls.push(options);
+          return new Promise(() => {});
+        },
+      },
+    },
+  }));
+  const output = promptOutput("user-quota", "Recall memory.", "Existing system context");
+
+  await hooks["chat.message"]({ sessionID: "session-quota" }, output);
+
+  assert.equal(output.message.system, "Existing system context\n\nRetrieved memory context.");
+  assert.doesNotMatch(output.message.system, /Quota reminder/);
+  assert.deepEqual(toastCalls, [{
+    body: {
+      title: "MemoraX Code",
+      message: "Quota reminder: Memory search has 10% or less remaining.",
+      variant: "warning",
+      duration: 10_000,
+    },
+    query: { directory: "/repo/directory" },
+    throwOnError: true,
+  }]);
+});
+
 test("repo-scoped reminder builders require a Backend-authorized worktree", async () => {
   const evaluations = [];
   const plugin = createMemoraxOpenCodePlugin({

@@ -93,7 +93,7 @@ test("memory service exposes a sealed Hook facade and closes idempotently", asyn
   }
 });
 
-test("memory service surfaces automatic Add quota on the next Codex or Claude turn", async () => {
+test("memory service surfaces automatic Add quota on the next supported client turn", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-service-quota-"));
   const memoraxCodeHome = join(root, "home");
   const workspace = join(root, "workspace");
@@ -104,7 +104,6 @@ test("memory service surfaces automatic Add quota on the next Codex or Claude tu
   const turns = [
     { turnId: "turn-quota-1", prompt: "Store the first turn.", reply: "First turn stored." },
     { turnId: "turn-quota-2", prompt: "Store the second turn.", reply: "Second turn stored." },
-    { turnId: "turn-quota-3", prompt: "Show the pending warning.", reply: "Warning shown." },
   ];
   const transcriptPath = await writeRollout(root, "session-service-quota", turns);
   const diagnosticEvents = [];
@@ -196,10 +195,18 @@ test("memory service surfaces automatic Add quota on the next Codex or Claude tu
     });
     await waitForAcceptedWritebacks(diagnosticEvents, 2);
 
-    const codexNotice = await service.recordTurnStart(codexTurnStart(turns[2]));
-    assert.equal(codexNotice.userNotice, "Quota notice: 9998 remaining.");
-    assert.equal("additionalContext" in codexNotice, false);
-    assert.deepEqual(await service.recordTurnStart(codexTurnStart(turns[2])), { ok: true });
+    const openCodeTurn = {
+      version: 1,
+      client: "opencode",
+      sessionId: "session-opencode-service-quota",
+      userMessageId: "user-opencode-service-quota",
+      prompt: "Show the second pending warning.",
+      cwd: workspace,
+    };
+    const openCodeNotice = await service.recordTurnStart(openCodeTurn);
+    assert.equal(openCodeNotice.userNotice, "Quota notice: 9998 remaining.");
+    assert.equal("additionalContext" in openCodeNotice, false);
+    assert.deepEqual(await service.recordTurnStart(openCodeTurn), { ok: true });
     assert.equal(requests.length, 2);
   } finally {
     await service.drain();

@@ -114,6 +114,9 @@ Memory write and memory search reminders are tracked independently. A reminder
 is emitted when the corresponding remaining quota reaches 10% or less and
 again at 0%; raw quota counts are not shown.
 
+Automatic quota reminders are currently supported in Codex, Claude Code, and
+OpenCode. DeepSeek Harness does not currently surface these reminders.
+
 Routine reminders do not include a complete Mark ID. If this device uses an
 unregistered anonymous identity and the MemoraX account page requires its Mark
 ID, run this command yourself in a local terminal:
