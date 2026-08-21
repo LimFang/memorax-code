@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -251,6 +251,10 @@ async function runSetupCommand(args, { updateMode = false } = {}) {
     const { withSetupCompletionLock } = await loadSetupCompletionApi();
     return await withSetupCompletionLock(memoraxCodeHome, async (completion) => {
       if (updateMode && completion.status === "absent") {
+        if (hasReadyMemoraxConfiguration(memoraxCodeHome)) {
+          console.error("memorax-code update: existing configuration detected; completing the one-time setup migration");
+          return await spawnSetupProcess(memoraxCodeHome, { setupMode });
+        }
         console.error("memorax-code update: package updated; setup has not been completed; run `memorax-code setup` from an interactive terminal");
         return 0;
       }
@@ -274,6 +278,10 @@ async function routeDefaultCommand() {
     const { readSetupCompletionRecord, setupCompletionPath } = await loadSetupCompletionApi();
     const state = readSetupCompletionRecord(memoraxCodeHome);
     if (state.status === "absent") {
+      if (setupCanPrompt() && hasReadyMemoraxConfiguration(memoraxCodeHome)) {
+        console.error("memorax-code: existing configuration detected; completing the one-time setup migration");
+        return await runSetupCommand(["--home", memoraxCodeHome]);
+      }
       console.error("memorax-code: setup has not been completed. Run `memorax-code setup` from an interactive terminal.");
       return 1;
     }
@@ -351,6 +359,22 @@ async function loadSetupCompletionApi() {
 
 async function loadTrialSetupApi() {
   return await import(pathToFileURL(join(packageRoot(), "lib", "trial-setup.mjs")).href);
+}
+
+function hasReadyMemoraxConfiguration(memoraxCodeHome) {
+  const result = spawnSync(process.execPath, [
+    join(packageRoot(), "bin", "memorax-cli.mjs"),
+    "status",
+    "--json",
+    "--config-only",
+  ], {
+    encoding: "utf8",
+    env: { ...process.env, MEMORAX_CODE_HOME: memoraxCodeHome },
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 10_000,
+    windowsHide: true,
+  });
+  return !result.error && !result.signal && result.status === 0;
 }
 
 async function spawnSetupProcess(memoraxCodeHome, { updateMode = false, setupMode = "automatic" } = {}) {
