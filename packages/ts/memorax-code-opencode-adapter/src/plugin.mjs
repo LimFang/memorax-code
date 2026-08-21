@@ -210,7 +210,7 @@ export function createMemoraxOpenCodePlugin(options = {}) {
           }, TURN_START_TIMEOUT_MS);
           turnStartAccepted = true;
           if (!pluginEnabled(options)) return;
-          await showUserNotice(client, directory, result?.userNotice, options);
+          void showUserNotice(client, directory, result?.userNotice, options);
           repositoryWorktree = stringValue(result?.repoMemoryWorktree);
           const repoMemoryEnv = openCodeRepoMemoryEnv(options, openCodeServerUrl, sessionId);
           if (repoMemoryEnv) {

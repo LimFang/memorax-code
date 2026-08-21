@@ -310,10 +310,12 @@ Important distinctions:
   coordination does not parse, mix, or guess those formats.
 - OpenCode's awaited `chat.message` plugin event supplies the correlated user
   prompt and injects accepted retrieval plus shared Skill reminder, User
-  Profile, and Procedure Memory context into that message's system context. Its
-  stable `session.compacted` event marks a durable supplemental reminder for
-  the next real user message; synthetic and compaction messages do not consume
-  that pending state. Local reminder evaluation remains independent of Backend
+  Profile, and Procedure Memory context into that message's system context.
+  Claimed Search and Add quota notices are dispatched through best-effort TUI
+  toasts without entering model context or blocking the prompt path. Its stable
+  `session.compacted` event marks a durable supplemental reminder for the next
+  real user message; synthetic and compaction messages do not consume that
+  pending state. Local reminder evaluation remains independent of Backend
   recovery. Its `shell.env` event binds the native session identity and makes
   the packaged memory CLI available to agent-run shell commands.
 
