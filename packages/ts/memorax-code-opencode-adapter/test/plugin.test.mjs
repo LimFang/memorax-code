@@ -40,7 +40,7 @@ test("chat.message retrieves memory and injects it into the system prompt", asyn
   });
 });
 
-test("chat.message shows userNotice as a TUI toast without injecting it into model context", async () => {
+test("chat.message shows userNotice without blocking or injecting it into model context", async () => {
   const toastCalls = [];
   const plugin = createPluginWithoutReminders({
     backendConnection: { url: "http://127.0.0.1:8787" },
@@ -53,7 +53,12 @@ test("chat.message shows userNotice as a TUI toast without injecting it into mod
   const hooks = await plugin(pluginInput({
     client: {
       session: { async messages() { return { data: [] }; } },
-      tui: { async showToast(options) { toastCalls.push(options); } },
+      tui: {
+        showToast(options) {
+          toastCalls.push(options);
+          return new Promise(() => {});
+        },
+      },
     },
   }));
   const output = promptOutput("user-quota", "Recall memory.", "Existing system context");
