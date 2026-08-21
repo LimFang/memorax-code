@@ -139,11 +139,12 @@ test("setup propagates the setup process exit code", async () => {
   }
 });
 
-test("update reviews clients and Hooks only after foreground setup has completed", {
+test("update reviews clients and Hooks or migrates a configured legacy install", {
   skip: process.platform === "win32",
 }, async (t) => {
-  for (const [name, completed] of [
+  for (const [name, completed, configured = false] of [
     ["setup incomplete", false],
+    ["configured legacy install", false, true],
     ["setup complete", true],
   ]) {
     await t.test(name, async () => {
@@ -171,13 +172,21 @@ test("update reviews clients and Hooks only after foreground setup has completed
           assumeInteractive: true,
           extraEnv: {
             PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
+            ...(configured ? { MEMORAX_CODE_TEST_CONFIGURED: "1" } : {}),
           },
         });
 
         assert.equal(result.status, 0, result.stderr);
-        if (!completed) {
+        if (!completed && !configured) {
           assert.match(result.stderr, /package updated; setup has not been completed; run `memorax-code setup` from an interactive terminal/);
           assert.equal(await pathExists(fixture.setupLogPath), false);
+        } else if (configured) {
+          assert.match(result.stderr, /existing configuration detected; completing the one-time setup migration/);
+          assert.deepEqual(await readJsonLines(fixture.setupLogPath), [{
+            args: [],
+            home: fixture.memoraxCodeHome,
+            setupMode: "automatic",
+          }]);
         } else {
           assert.match(result.stderr, /reviewing client and Hook changes in the foreground/);
           assert.deepEqual(await readJsonLines(fixture.setupLogPath), [{
@@ -347,6 +356,17 @@ async function createPackageFixture() {
     version: "0.0.0-test",
     type: "module",
   }, null, 2)}\n`);
+  await writeFile(join(root, "bin", "memorax-cli.mjs"), [
+    "const configured = process.env.MEMORAX_CODE_TEST_CONFIGURED === '1';",
+    "console.log(JSON.stringify({",
+    "  ok: configured,",
+    "  action: 'memory.status',",
+    "  provider: 'memory.memorax',",
+    "  config: { configured },",
+    "}));",
+    "process.exit(configured ? 0 : 1);",
+    "",
+  ].join("\n"));
   await writeFile(join(root, "lib", "trial-setup.mjs"), [
     "export async function loadReadyTrialSetupCredential(options = {}) {",
     "  if (options.memoraxCodeHome !== process.env.MEMORAX_CODE_TEST_EXPECTED_ACCOUNT_HOME) {",
