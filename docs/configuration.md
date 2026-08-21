@@ -104,11 +104,14 @@ Successful setup writes a private versioned record at:
 $MEMORAX_CODE_HOME/runtime/setup/setup-completion.json
 ```
 
-The record controls only no-argument CLI routing. When it is absent,
-`memorax-code` points to `memorax-code setup`; when valid, the command shows
-status. Invalid and unsupported records fail closed. A complete product
-uninstall removes this marker while retaining `config.toml`; stop and partial
-client uninstall preserve it.
+The record controls only no-argument CLI routing. When it is valid, the command
+shows status. When it is absent and an interactive terminal is available,
+`memorax-code` validates and reuses a complete effective configuration, then
+runs setup and reconciliation once to write the record. If the configuration
+is incomplete or no interactive terminal is available, it points to
+`memorax-code setup`. Invalid and unsupported records fail closed. A complete
+product uninstall removes this marker while retaining `config.toml`; stop and
+partial client uninstall preserve it.
 
 Replacing a running managed Backend uses a separate private record:
 
