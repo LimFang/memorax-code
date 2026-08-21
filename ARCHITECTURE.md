@@ -185,9 +185,14 @@ lifecycle never detects new clients, accepts credentials, or authorizes Hooks.
 `memorax-code setup` owns disclosure, memory preferences, credential creation
 or entry, client discovery, Hook review, Backend reconciliation, and final
 verification. It requires an interactive terminal. A versioned completion
-record is committed only after setup succeeds; the no-argument CLI uses that
-record solely to choose between setup guidance and current status. Invalid or
-unsupported completion and package-transition records fail closed.
+record is committed only after setup succeeds; the no-argument CLI normally
+uses that record to choose between setup guidance and current status. For a
+legacy installation with a ready effective configuration but no completion
+record, an interactive no-argument invocation validates and reuses that
+configuration, then runs the same foreground setup and reconciliation once to
+commit the record. Without a ready configuration or interactive terminal, it
+continues to show setup guidance. Invalid or unsupported completion and
+package-transition records fail closed.
 
 The principal control-plane locations are:
 
