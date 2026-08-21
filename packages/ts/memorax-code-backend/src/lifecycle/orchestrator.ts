@@ -194,8 +194,12 @@ async function startMemoraxCodeServiceLocked(
   if (serviceStateFailure) {
     return { ok: false, action: "start", backend: serviceStateFailure };
   }
-  const config = loadManagedClientsConfig(memoraxCodeHome);
-  const requestedClients = resolveManagedClients(argv, config);
+  const packageReplacement = isPackageReplacement();
+  // Active client intent must not bypass strict lifecycle config validation.
+  if (packageReplacement) loadManagedClientsConfig(memoraxCodeHome);
+  const requestedClients = managedClientsFor(argv, serviceOptions, {
+    preferActive: packageReplacement,
+  });
   const clients = isDshAdapterRecovery()
     ? { ...requestedClients, dsh: true }
     : requestedClients;
@@ -573,7 +577,9 @@ async function executeMemoraxCodeStop(
       ...(dshAdapter ? { dshAdapter } : {}),
       ...(opencodeAdapter ? { opencodeAdapter } : {}),
     },
-    remainingClients: remaining && hasRemainingClients ? remaining : undefined,
+    remainingClients: packageReplacement
+      ? activeClients
+      : remaining && hasRemainingClients ? remaining : undefined,
   };
 }
 
