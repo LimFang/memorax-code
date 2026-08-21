@@ -194,8 +194,9 @@ async function startMemoraxCodeServiceLocked(
   if (serviceStateFailure) {
     return { ok: false, action: "start", backend: serviceStateFailure };
   }
-  const config = loadManagedClientsConfig(memoraxCodeHome);
-  const requestedClients = resolveManagedClients(argv, config);
+  const requestedClients = managedClientsFor(argv, serviceOptions, {
+    preferActive: isPackageReplacement(),
+  });
   const clients = isDshAdapterRecovery()
     ? { ...requestedClients, dsh: true }
     : requestedClients;

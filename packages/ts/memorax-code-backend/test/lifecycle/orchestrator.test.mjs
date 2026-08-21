@@ -576,6 +576,41 @@ test("memorax-code start leaves Codex config unchanged before the plugin is inst
   }
 });
 
+test("package replacement restores only previously active clients", async () => {
+  const home = await mkdtemp(join(tmpdir(), "memorax-code-package-replacement-home-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "memorax-code-package-replacement-codex-"));
+  const port = await freePort();
+  const cliPath = fileURLToPath(new URL("../../dist/memorax-code.js", import.meta.url));
+  const activeClientsPath = join(home, "runtime", "backend", "managed-clients.json");
+  const inactiveClients = { codex: false, claude: false, dsh: false, opencode: false };
+  await writeManagedClientsConfig(home, { codex: true, claude: false });
+  await mkdir(join(home, "runtime", "backend"), { recursive: true });
+  await writeFile(activeClientsPath, `${JSON.stringify(inactiveClients)}\n`);
+  try {
+    const started = await runCli(cliPath, [
+      "start", "--json",
+      "--home", home,
+      "--port", String(port),
+      "--codex-home", codexHome,
+    ], { env: { MEMORAX_CODE_PACKAGE_REPLACEMENT: "1" } });
+
+    assert.equal(started.code, 0, `${started.stdout}\n${started.stderr}`);
+    const report = JSON.parse(started.stdout);
+    assert.equal(report.ok, true);
+    assert.equal(report.codexAdapter, undefined);
+    assert.deepEqual(JSON.parse(await readFile(activeClientsPath, "utf8")), inactiveClients);
+  } finally {
+    await runCli(cliPath, [
+      "stop", "--json",
+      "--home", home,
+      "--port", String(port),
+      "--clients", "none",
+    ]);
+    await rm(home, { recursive: true, force: true });
+    await rm(codexHome, { recursive: true, force: true });
+  }
+});
+
 test("memorax-code start --yes registers a missing Codex plugin but requires activation", async () => {
   const home = await mkdtemp(join(tmpdir(), "memorax-code-lifecycle-prompt-plugin-home-"));
   const codexHome = await mkdtemp(join(tmpdir(), "memorax-code-lifecycle-prompt-plugin-codex-"));
