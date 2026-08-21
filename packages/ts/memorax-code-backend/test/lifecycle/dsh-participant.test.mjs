@@ -17,7 +17,7 @@ import { freePort } from "../support/helpers.mjs";
 
 const cliPath = fileURLToPath(new URL("../../dist/memorax-code.js", import.meta.url));
 
-test("Backend lifecycle stages, activates, retains, and package-retires the DSH participant", async () => {
+test("Backend lifecycle stages, activates, retains, package-retires, and restores the DSH participant", async () => {
   const fixture = await createFixture();
   try {
     const started = runCli(fixture, "start", ["--clients", "dsh"]);
@@ -75,6 +75,21 @@ test("Backend lifecycle stages, activates, retains, and package-retires the DSH 
     assert.equal(profileHasAdapter(fixture.profilePath), false);
     assert.equal(existsSync(fixture.pidPath), false);
     assert.match(readFileSync(fixture.dshLog, "utf8"), /^remove enabled=false$/m);
+
+    const activeClientsPath = join(fixture.memoraxCodeHome, "runtime", "backend", "managed-clients.json");
+    assert.deepEqual(readJson(activeClientsPath), {
+      codex: false,
+      claude: false,
+      dsh: true,
+      opencode: false,
+    });
+    const restored = runCli(fixture, "start", [], {
+      MEMORAX_CODE_PACKAGE_REPLACEMENT: "1",
+    });
+    assert.equal(restored.status, 0, `${restored.stdout}\n${restored.stderr}`);
+    assert.equal(JSON.parse(restored.stdout).dshAdapter.enabled, true);
+    assert.equal(readJson(fixture.statePath).enabled, true);
+    assert.equal(profileHasAdapter(fixture.profilePath), true);
   } finally {
     runCli(fixture, "stop", ["--clients", "none"]);
     rmSync(fixture.root, { recursive: true, force: true });
