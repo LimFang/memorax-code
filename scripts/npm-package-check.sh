@@ -529,6 +529,16 @@ assert (home / ".memorax-code" / "runtime" / "backend" / "backend.pid.json").exi
 assert not (home / ".memorax-code" / "runtime" / "install" / "package-transition.json").exists()
 PY_SETUP
 
+cp "$MEMORAX_CODE_HOME/config.toml" "$home_dir/legacy-config-before-migration.toml"
+rm "$MEMORAX_CODE_HOME/runtime/setup/setup-completion.json"
+MEMORAX_CODE_SETUP_ASSUME_INTERACTIVE=1 \
+MEMORAX_CODE_SKIP_CODEX_PLUGIN_INSTALL=1 \
+MEMORAX_CODE_SKIP_CLAUDE_ADAPTER_INSTALL=1 \
+MEMORAX_CODE_SKIP_OPENCODE_ADAPTER_INSTALL=1 \
+"$prefix/bin/memorax-code" >/dev/null 2>&1
+cmp "$home_dir/legacy-config-before-migration.toml" "$MEMORAX_CODE_HOME/config.toml"
+test -f "$MEMORAX_CODE_HOME/runtime/setup/setup-completion.json"
+
 "$prefix/bin/memorax-code" >/dev/null
 
 cp "$MEMORAX_CODE_HOME/runtime/setup/setup-completion.json" "$home_dir/setup-completion-before-update.json"
