@@ -9,11 +9,13 @@ installation. For a source checkout and contributor setup, see
 
 - Node.js 20 or newer (Node.js 24 LTS recommended) and npm.
 - At least one of Codex, Claude Code, DeepSeek Harness (DSH), OpenCode Desktop,
-  or the OpenCode CLI installed in the environment where MemoraX Code will
-  run. DSH integration requires at least one existing Profile and `pnpm` on
-  `PATH` because DSH's native Profile plugin manager delegates package changes
-  to it. The tested DSH baseline is `0.1.0-rc.6`; other valid semantic versions
-  are reported as untested rather than rejected automatically.
+  or the OpenCode CLI available in the environment where MemoraX Code will
+  run. DSH must already be installed globally or initialized through its
+  official `npx` workflow; MemoraX Code does not install or update it. DSH
+  integration requires at least one existing Profile and `pnpm` on `PATH`
+  because DSH's native Profile plugin manager delegates package changes to it.
+  The tested DSH baseline is `0.1.0-rc.6`; other valid semantic versions are
+  reported as untested rather than rejected automatically.
 - Python 3 only when using Repo Memory operations.
 - On Linux, `/usr/bin/secret-tool` from libsecret and an available Secret
   Service in the current user session for setup-managed credentials.
@@ -100,7 +102,13 @@ refresh OpenCode after installation so the managed integration is loaded.
 DSH registration is applied to the existing Profiles found under `DSH_HOME`
 (`~/.dsh` by default). Restart or refresh DSH after installation so those
 Profiles load the managed integration. MemoraX Code does not replace the
-Profiles or their session data.
+Profiles or their session data. If no global `dsh` command is available,
+MemoraX Code can use the DSH runtime already linked into the existing Profile
+dependency tree. It never invokes `npx` or installs or updates DSH.
+If automatically discovered DSH is unavailable, setup keeps the Backend and
+other detected clients running and reports the DSH integration as degraded.
+After repairing DSH, run `memorax-code start --clients dsh` to reconcile it;
+explicit DSH selection reports failure until the integration is ready.
 
 Open the client in a real project directory and submit at least one prompt
 before using the client doctor as the final verification. Until the Hooks have

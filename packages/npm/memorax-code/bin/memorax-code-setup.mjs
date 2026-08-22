@@ -39,6 +39,7 @@ const BLUE = "\x1b[34m";
 const RED = "\x1b[31m";
 const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
+const DSH_OPTIONAL_ENV = "MEMORAX_CODE_DSH_ADAPTER_OPTIONAL";
 
 const skipCodexPluginInstall = truthyEnv(process.env.MEMORAX_CODE_SKIP_CODEX_PLUGIN_INSTALL);
 const skipClaudeAdapterInstall = truthyEnv(process.env.MEMORAX_CODE_SKIP_CLAUDE_ADAPTER_INSTALL);
@@ -255,7 +256,10 @@ if (backendAndAdaptersStatus === "enabled") {
     opencodeAdapterEnabled: !skipOpenCodeAdapter,
   });
 }
-printPostinstallSummary(backendAndAdaptersStatus);
+printPostinstallSummary(
+  backendAndAdaptersStatus,
+  backendAndAdapters.dshAdapterUnavailable,
+);
 if (backendAndAdaptersStatus === "enabled") {
   log("View local memory activity: http://127.0.0.1:8787/memory-viewer");
 }
@@ -1035,12 +1039,16 @@ async function startBackendAndCheck({
   const adapterFlags = clientLifecycleFlags({ clientMode });
   const startArgs = ["start", ...adapterFlags];
   const statusArgs = ["status", ...adapterFlags];
+  const optionalDshEnv = { [DSH_OPTIONAL_ENV]: "1" };
   let statusResult;
   const result = await reconcileSetup({
-    start: () => runMemoraxCodeCommand(startArgs, pendingClientHookRuntimeEnv()),
+    start: () => runMemoraxCodeCommand(startArgs, {
+      ...pendingClientHookRuntimeEnv(),
+      ...optionalDshEnv,
+    }),
     stop: () => runMemoraxCodeCommand(["stop", ...adapterFlags]),
     status: () => {
-      statusResult = runMemoraxCodeCommand(statusArgs);
+      statusResult = runMemoraxCodeCommand(statusArgs, optionalDshEnv);
       return statusResult;
     },
     isReady: (checked) => memoraxCodeEnabled(checked, {
@@ -1086,6 +1094,9 @@ async function startBackendAndCheck({
     dshAdapterEnabled: result.status === "enabled" && statusResult
       ? dshAdapterReady(statusResult)
       : false,
+    dshAdapterUnavailable: result.status === "enabled" && statusResult
+      ? dshAdapterUnavailable(statusResult)
+      : false,
   };
 }
 
@@ -1120,6 +1131,11 @@ function printReconcileFailure(result, {
 function dshAdapterReady(statusResult) {
   const output = `${statusResult.stdout ?? ""}\n${statusResult.stderr ?? ""}`;
   return /\bDSH adapter:\s*ok\b[^\r\n]*\bintegration=plugin\b/im.test(stripAnsi(output));
+}
+
+function dshAdapterUnavailable(statusResult) {
+  const output = `${statusResult.stdout ?? ""}\n${statusResult.stderr ?? ""}`;
+  return /\bDSH adapter:\s*unavailable\b/im.test(stripAnsi(output));
 }
 
 function pendingClientHookRuntimeEnv() {
@@ -1403,10 +1419,10 @@ function statusCommandText({
   return `${commands.slice(0, -1).join(", ")}, and ${commands.at(-1)}`;
 }
 
-function printPostinstallSummary(backendAndAdaptersStatus) {
+function printPostinstallSummary(backendAndAdaptersStatus, degraded = false) {
   log("Package: Installed");
   const backendStatusLabel = backendAndAdaptersStatus === "enabled"
-    ? blueBold("Enabled")
+    ? blueBold(degraded ? "Enabled (degraded)" : "Enabled")
     : backendAndAdaptersStatus === "unavailable"
       ? redBold("Unavailable")
       : "Not verified";

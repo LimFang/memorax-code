@@ -42,6 +42,7 @@ export type {
 export type MemoraxCodeStatusReport = {
   ok: boolean;
   action: "status";
+  degraded?: true;
   backend: Awaited<ReturnType<typeof runBackendStatus>>;
   codexAdapter?: AdapterReport;
   claudeAdapter?: AdapterReport;
@@ -52,6 +53,7 @@ export type MemoraxCodeStatusReport = {
 export type MemoraxCodeLifecycleReport = {
   ok: boolean;
   action: "start" | "stop" | "restart" | "uninstall";
+  degraded?: true;
   reason?: string;
   message?: string;
   backend?: Awaited<ReturnType<typeof startBackendService | typeof stopBackendService>>;
@@ -89,6 +91,7 @@ type MemoraxCodeStopExecution = Readonly<{
 }>;
 
 const PACKAGE_REPLACEMENT_ENV = "MEMORAX_CODE_PACKAGE_REPLACEMENT";
+const DSH_OPTIONAL_ENV = "MEMORAX_CODE_DSH_ADAPTER_OPTIONAL";
 const DSH_RECOVERY_ENV = "MEMORAX_CODE_DSH_ADAPTER_RECOVERY";
 const DSH_RECOVERY_REVISION_ENV = "MEMORAX_CODE_DSH_ADAPTER_EXPECTED_REVISION";
 
@@ -133,9 +136,12 @@ export async function collectMemoraxCodeStatus(
   const claudeAdapter = clients.claude
     ? await claudeAdapterLifecycle.status({ argv, serviceOptions, backendUrl })
     : undefined;
-  const dshAdapter = clients.dsh
-    ? await collectDshAdapterLifecycleStatus({ argv, serviceOptions, backendUrl })
-    : undefined;
+  const dshAdapter = markOptionalDshAdapter(
+    clients.dsh
+      ? await collectDshAdapterLifecycleStatus({ argv, serviceOptions, backendUrl })
+      : undefined,
+    clients.dsh && isOptionalDshSelection(argv),
+  );
   const opencodeAdapter = clients.opencode
     ? await openCodeAdapterLifecycle.status({ argv, serviceOptions, backendUrl })
     : undefined;
@@ -143,13 +149,15 @@ export async function collectMemoraxCodeStatus(
   const claudeReady = claudeAdapter ? isAdapterReady(claudeAdapter) : true;
   const dshReady = dshAdapter ? isAdapterReady(dshAdapter) : true;
   const opencodeReady = opencodeAdapter ? isAdapterReady(opencodeAdapter) : true;
+  const optionalDshUnavailable = isOptionalUnavailableDshAdapter(dshAdapter);
   return {
     ok: backend.ok
       && codexReady
       && opencodeReady
       && (isOptionalUnconfiguredClaudeAdapter(claudeAdapter, codexAdapter) || claudeReady)
-      && (isOptionalUnavailableDshAdapter(dshAdapter) || dshReady),
+      && (optionalDshUnavailable || dshReady),
     action: "status",
+    ...(optionalDshUnavailable ? { degraded: true } : {}),
     backend,
     ...(codexAdapter ? { codexAdapter } : {}),
     ...(claudeAdapter ? { claudeAdapter } : {}),
@@ -204,6 +212,7 @@ async function startMemoraxCodeServiceLocked(
     ? { ...requestedClients, dsh: true }
     : requestedClients;
   const previousClients = readActiveManagedClients(memoraxCodeHome);
+  const optionalDsh = clients.dsh && isOptionalDshSelection(argv);
   const context = { argv, serviceOptions };
   if (clients.dsh || previousClients?.dsh || isDshAdapterRecovery()) {
     try {
@@ -216,6 +225,7 @@ async function startMemoraxCodeServiceLocked(
           clients,
           previousClients,
           dshLifecycle,
+          optionalDsh,
         )
       ));
     } catch (error) {
@@ -240,6 +250,7 @@ async function executeMemoraxCodeStart(
   clients: ManagedClients,
   previousClients: ManagedClients | undefined,
   dshLifecycle?: DshAdapterLifecycleParticipant,
+  optionalDsh = false,
 ): Promise<MemoraxCodeLifecycleReport> {
   const lifecycleContext = { argv, serviceOptions };
   const lifecycleBackendContext = { ...lifecycleContext, backendUrl };
@@ -377,10 +388,10 @@ async function executeMemoraxCodeStart(
       opencodeAdapter,
     };
   }
-  const preparedDshAdapter = clients.dsh && dshLifecycle
+  const preparedDshAdapter = markOptionalDshAdapter(clients.dsh && dshLifecycle
     ? await dshLifecycle.prepareEnable(lifecycleBackendContext)
-    : undefined;
-  if (preparedDshAdapter?.ok === false) {
+    : undefined, optionalDsh);
+  if (preparedDshAdapter?.ok === false && !optionalDsh) {
     const recovery = await recoverPreparationFailure("dsh_adapter_enable_failed");
     return {
       ok: false,
@@ -414,12 +425,15 @@ async function executeMemoraxCodeStart(
       ...(disabledOpenCode ? { opencodeAdapter: disabledOpenCode } : {}),
     };
   }
-  const dshAdapter = preparedDshAdapter?.installed === true
+  const dshAdapter = markOptionalDshAdapter(preparedDshAdapter?.installed === true
     ? await dshLifecycle?.activate?.(lifecycleBackendContext)
-    : preparedDshAdapter;
+    : preparedDshAdapter, optionalDsh);
+  const optionalDshUnavailable = isOptionalUnavailableDshAdapter(dshAdapter);
   return {
-    ok: claudeAdapter?.ok !== false && dshAdapter?.ok !== false,
+    ok: claudeAdapter?.ok !== false
+      && (!dshAdapter || isAdapterReady(dshAdapter) || optionalDshUnavailable),
     action: "start",
+    ...(optionalDshUnavailable ? { degraded: true } : {}),
     backend,
     ...(codexAdapter ? { codexAdapter } : {}),
     ...(claudeAdapter ? { claudeAdapter } : {}),
@@ -870,6 +884,11 @@ function hasExplicitClientSelection(argv: string[]): boolean {
   return argv.includes("--clients");
 }
 
+function isOptionalDshSelection(argv: string[]): boolean {
+  return !isDshAdapterRecovery()
+    && (!hasExplicitClientSelection(argv) || truthyEnv(process.env[DSH_OPTIONAL_ENV]));
+}
+
 function argValue(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
   return index >= 0 ? argv[index + 1] : undefined;
@@ -1051,13 +1070,16 @@ export function isAdapterReady(report: AdapterReport): boolean {
 }
 
 export function isOptionalUnavailableDshAdapter(report: AdapterReport | undefined): boolean {
-  return Boolean(
-    report
-      && report.ok !== false
-      && report.skipped === true
-      && report.managed !== true
-      && report.reason === "no_existing_profiles",
-  );
+  return Boolean(report?.optional === true && !isAdapterReady(report));
+}
+
+function markOptionalDshAdapter(
+  report: AdapterReport | undefined,
+  optional: boolean,
+): AdapterReport | undefined {
+  return report && optional && !isAdapterReady(report)
+    ? { ...report, optional: true }
+    : report;
 }
 
 

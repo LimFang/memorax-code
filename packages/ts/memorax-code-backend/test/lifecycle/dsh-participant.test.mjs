@@ -238,18 +238,53 @@ test("failed DSH deselection restores every previously enabled Profile", async (
   }
 });
 
-test("DSH-only status reports an optional skip when no Profile exists", async () => {
+test("automatic DSH discovery degrades without a Profile while explicit selection stays strict", async () => {
   const fixture = await createFixture();
   try {
+    writeDshOnlyConfig(fixture);
     rmSync(join(fixture.dshHome, "profiles"), { recursive: true, force: true });
-    const started = runCli(fixture, "start", ["--clients", "none"]);
-    assert.equal(started.status, 0, `${started.stdout}\n${started.stderr}`);
 
-    const status = runHumanCli(fixture, "status", ["--clients", "dsh"]);
+    const started = runCli(fixture, "start");
+    assert.equal(started.status, 0, `${started.stdout}\n${started.stderr}`);
+    const startReport = JSON.parse(started.stdout);
+    assert.equal(startReport.ok, true);
+    assert.equal(startReport.degraded, true);
+    assert.equal(startReport.backend.ok, true);
+    assert.equal(startReport.dshAdapter.optional, true);
+    assert.equal(startReport.dshAdapter.reason, "no_existing_profiles");
+
+    const status = runHumanCli(fixture, "status");
     assert.equal(status.status, 0, `${status.stdout}\n${status.stderr}`);
-    assert.match(status.stdout, /optional DSH integration was skipped/);
-    assert.match(status.stdout, /DSH integration was skipped: no_existing_profiles/);
+    assert.match(status.stdout, /optional DSH integration is unavailable/);
+    assert.match(status.stdout, /DSH integration is unavailable: no_existing_profiles/);
     assert.doesNotMatch(status.stdout, /ready for new DSH sessions/);
+
+    const explicit = runHumanCli(fixture, "status", ["--clients", "dsh"]);
+    assert.equal(explicit.status, 1, `${explicit.stdout}\n${explicit.stderr}`);
+    assert.match(explicit.stdout, /DSH adapter: skipped no_existing_profiles/);
+    assert.doesNotMatch(explicit.stdout, /optional DSH integration is unavailable/);
+  } finally {
+    runCli(fixture, "stop", ["--clients", "none"]);
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("setup-marked DSH preparation failures keep the Backend available", async () => {
+  const fixture = await createFixture();
+  try {
+    const started = runCli(fixture, "start", ["--clients", "dsh"], {
+      FAKE_DSH_VERSION: "not-a-semver",
+      MEMORAX_CODE_DSH_ADAPTER_OPTIONAL: "1",
+    });
+    assert.equal(started.status, 0, `${started.stdout}\n${started.stderr}`);
+    const report = JSON.parse(started.stdout);
+    assert.equal(report.ok, true);
+    assert.equal(report.degraded, true);
+    assert.equal(report.backend.ok, true);
+    assert.equal(report.dshAdapter.ok, false);
+    assert.equal(report.dshAdapter.optional, true);
+    assert.equal(report.dshAdapter.reason, "dsh_version_unavailable");
+    assert.equal(existsSync(fixture.pidPath), true);
   } finally {
     runCli(fixture, "stop", ["--clients", "none"]);
     rmSync(fixture.root, { recursive: true, force: true });
@@ -414,6 +449,18 @@ function childEnv(fixture, overrides) {
     FAKE_DSH_LOG: fixture.dshLog,
     ...overrides,
   };
+}
+
+function writeDshOnlyConfig(fixture) {
+  mkdirSync(fixture.memoraxCodeHome, { recursive: true });
+  writeFileSync(join(fixture.memoraxCodeHome, "config.toml"), [
+    "[clients]",
+    "codex = false",
+    "claude = false",
+    "dsh = true",
+    "opencode = false",
+    "",
+  ].join("\n"));
 }
 
 async function waitFor(predicate, timeoutMs = 5_000) {
