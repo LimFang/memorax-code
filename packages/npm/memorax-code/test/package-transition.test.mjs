@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -80,6 +81,8 @@ test("a live Backend is retired before replacement and restored once afterward",
       ["start", "--home", fixture.home, "--json"],
       ["status", "--home", fixture.home, "--json"],
     ]);
+    const lifecycleCwd = await realpath(join(fixture.home, "runtime", "install"));
+    assert.ok(calls.every((call) => call.cwd === lifecycleCwd));
     assert.equal(calls[1].packageReplacement, true);
     assert.equal(calls[2].packageReplacement, false);
     assert.ok(calls.slice(1).every((call) => !call.args.includes("--clients")));
@@ -88,6 +91,24 @@ test("a live Backend is retired before replacement and restored once afterward",
 
     assert.equal((await runEntry(fixture, "postinstall")).code, 0);
     assert.equal((await readCalls(fixture)).length, 3);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("relative MEMORAX_CODE_HOME is resolved before lifecycle commands change cwd", async () => {
+  const fixture = await createFixture({ pid: process.pid });
+  try {
+    const options = { cwd: fixture.root, memoraxCodeHome: "memorax-code-home" };
+    const preinstall = await runEntry(fixture, "preinstall", options);
+    assert.equal(preinstall.code, 0, preinstall.stderr);
+    const postinstall = await runEntry(fixture, "postinstall", options);
+    assert.equal(postinstall.code, 0, postinstall.stderr);
+
+    const calls = await readCalls(fixture);
+    const resolvedHome = await realpath(fixture.home);
+    assert.ok(calls.every((call) => call.args.includes(resolvedHome)));
+    assert.ok(calls.every((call) => call.cwd === join(resolvedHome, "runtime", "install")));
   } finally {
     await fixture.cleanup();
   }
@@ -347,6 +368,7 @@ try { transitionState = JSON.parse(readFileSync(transitionPath, "utf8")).state; 
 appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({
   command,
   args,
+  cwd: process.cwd(),
   transitionState,
   packageReplacement: process.env.MEMORAX_CODE_PACKAGE_REPLACEMENT === "1",
 }) + "\\n");
@@ -360,14 +382,19 @@ console.log(JSON.stringify({ ok: true, command, pidExisted: existsSync(pidPath) 
 `;
 }
 
-async function runEntry(fixture, entry, { keepStdinOpen = false } = {}) {
+async function runEntry(fixture, entry, {
+  keepStdinOpen = false,
+  cwd,
+  memoraxCodeHome = fixture.home,
+} = {}) {
   const filename = entry === "preinstall"
     ? "memorax-code-npm-preinstall.mjs"
     : "memorax-code-plugin-postinstall.mjs";
   return await new Promise((resolve) => {
     const startedAt = Date.now();
     const child = spawn(process.execPath, [join(fixture.root, "bin", filename)], {
-      env: { ...process.env, ...fixture.env, MEMORAX_CODE_HOME: fixture.home },
+      cwd,
+      env: { ...process.env, ...fixture.env, MEMORAX_CODE_HOME: memoraxCodeHome },
       stdio: [keepStdinOpen ? "pipe" : "ignore", "pipe", "pipe"],
     });
     let stdout = "";

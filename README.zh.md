@@ -172,6 +172,18 @@ memorax-code update
 该命令会沿用当前发布通道并保留配置。如果新版本修改了已安装的集成资产，请重启或刷新 Codex、
 Claude Code、DeepSeek Harness 和 OpenCode。
 
+### Windows 升级提示
+
+如果您在 Windows 上从 MemoraX Code v0.1.3-v0.1.6 升级到 v0.1.7，请执行：
+
+```powershell
+memorax-code stop
+memorax-code update --latest
+memorax-code
+```
+
+该操作仅需执行一次，后续升级无需重复。
+
 ## 卸载
 
 请先运行产品自身的卸载流程：
