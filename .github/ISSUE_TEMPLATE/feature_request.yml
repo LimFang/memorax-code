@@ -43,7 +43,9 @@ body:
       options:
         - Codex
         - Claude Code
-        - Both Codex and Claude Code
+        - DeepSeek Harness
+        - OpenCode
+        - Multiple clients
         - Not applicable
         - Not sure
     validations:
