@@ -354,9 +354,7 @@ export, or public collector.
 
 DSH trace contains only normalized lifecycle and memory-operation events. Its
 native Session Event Log and raw events remain local to DSH; MemoraX Code does
-not copy that log into trace. Memory Viewer includes DSH activity from
-normalized operational events and retained trace, and never reads the native
-Session Event Log.
+not copy that log into trace.
 
 ## Backend runtime settings
 

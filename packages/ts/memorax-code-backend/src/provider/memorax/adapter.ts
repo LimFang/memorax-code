@@ -8,7 +8,6 @@ import {
 } from "./config.js";
 import type { MemoraxAdapterConfig, MemoraxAddOptions } from "./config.js";
 import {
-  getMemoraxJson,
   memoraxInvocationFailure,
   postMemoraxJson,
   type MemoraxInvocationFailure,
@@ -253,14 +252,6 @@ export async function callMemoAdd(
   fetchImpl: typeof fetch = fetch,
 ): Promise<MemoraxJsonResponse> {
   return postMemoraxJson(config, "/v1/memories/add", payload, fetchImpl);
-}
-
-export async function callMemoAddStatus(
-  config: MemoraxAdapterConfig,
-  taskId: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<unknown> {
-  return getMemoraxJson(config, `/v1/memories/add/status/${encodeURIComponent(taskId)}`, fetchImpl);
 }
 
 function recordMemoryObservabilityEvent(
