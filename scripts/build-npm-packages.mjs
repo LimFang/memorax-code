@@ -12,7 +12,10 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildClaudeMarketplace } from "../packages/ts/memorax-code-claude-adapter/scripts/build-marketplace.mjs";
 import { assertLocalTraceOnly } from "./check-local-trace-only.mjs";
-import { isAllowedNpmPackPath } from "./npm-package-layout.mjs";
+import {
+  isAllowedNpmPackFilePath,
+  isAllowedNpmPackPath,
+} from "./npm-package-layout.mjs";
 import { npmShippedDocs } from "./npm-shipped-docs.mjs";
 import {
   assertDeclaredNpmSource,
@@ -68,6 +71,8 @@ async function stageMainPackage(destination) {
     "lib/memorax-code-adapter-common",
     "lib/memorax-code-codex-adapter",
     "lib/memorax-code-claude-adapter",
+    "lib/memorax-code-dsh-adapter",
+    "lib/memorax-code-opencode-adapter",
   ]) {
     await mkdir(join(destination, path), { recursive: true });
   }
@@ -97,6 +102,18 @@ async function stageMainPackage(destination) {
     "packages/ts/memorax-code-claude-adapter/package.json",
     join(destination, "lib/memorax-code-claude-adapter/package.json"),
   );
+  await copyFile(
+    "packages/ts/memorax-code-dsh-adapter/package.json",
+    join(destination, "lib/memorax-code-dsh-adapter/package.json"),
+  );
+  await copyFile(
+    "packages/ts/memorax-code-dsh-adapter/cordis.patch.yml",
+    join(destination, "lib/memorax-code-dsh-adapter/cordis.patch.yml"),
+  );
+  await copyFile(
+    "packages/ts/memorax-code-opencode-adapter/package.json",
+    join(destination, "lib/memorax-code-opencode-adapter/package.json"),
+  );
 
   await buildClaudeMarketplace({
     outputDir: join(destination, "lib/memorax-code-claude-marketplace"),
@@ -122,8 +139,8 @@ async function validateSourceManifest() {
   if (typeof manifest.version !== "string" || !manifest.version) {
     throw new Error("main npm package version is required");
   }
-  if (manifest.engines?.node !== ">=24") {
-    throw new Error("main npm package must require Node.js 24 or newer");
+  if (manifest.engines?.node !== ">=20") {
+    throw new Error("main npm package must require Node.js 20 or newer");
   }
 }
 
@@ -132,23 +149,52 @@ async function validateStaging(packageRoot) {
     "LICENSE",
     "bin/memorax-code.mjs",
     "bin/memorax-cli.mjs",
+    "bin/memorax-code-opencode.mjs",
     "bin/memorax-code-npm-preinstall.mjs",
+    "bin/memorax-code-plugin-postinstall.mjs",
+    "bin/memorax-code-setup.mjs",
     "lib/client-hook-runtime.mjs",
+    "lib/dsh-plugin-install.mjs",
     "lib/node-version.mjs",
+    "lib/package-transition.mjs",
     "lib/resolve-claude-command.mjs",
     "lib/resolve-codex-command.mjs",
+    "lib/setup-memory-preferences.mjs",
+    "lib/setup-reconcile.mjs",
     "lib/vscode-extension-command.mjs",
     "lib/npm-invocation.mjs",
     "lib/windows-cli-invocation.mjs",
+    "lib/trial-plugin-mark.mjs",
+    "lib/trial-provision-client.mjs",
+    "lib/trial-provision-flow.mjs",
+    "lib/trial-setup.mjs",
     "lib/memorax-code-adapter-common/src/backend-connection.mjs",
+    "lib/memorax-code-adapter-common/src/config-utils.mjs",
     "lib/memorax-code-adapter-common/src/hooks/client-hook-launcher.mjs",
     "lib/memorax-code-adapter-common/src/clients/codex-plugin-artifact.mjs",
     "lib/memorax-code-adapter-common/src/hooks/hook-runtime-generation.mjs",
+    "lib/memorax-code-adapter-common/src/hooks/memory-skill-reminder-policy.mjs",
     "lib/memorax-code-adapter-common/src/memorax-code-config-file.mjs",
     "lib/memorax-code-adapter-common/src/memorax-defaults.mjs",
     "lib/memorax-code-adapter-common/src/runtime-record.mjs",
+    "lib/memorax-code-adapter-common/src/setup-completion.mjs",
+    "lib/memorax-code-adapter-common/src/credentials/linux-secret-service.mjs",
+    "lib/memorax-code-adapter-common/src/credentials/macos-keychain.mjs",
+    "lib/memorax-code-adapter-common/src/credentials/secure-command.mjs",
+    "lib/memorax-code-adapter-common/src/credentials/trial-credential-record.mjs",
+    "lib/memorax-code-adapter-common/src/credentials/trial-credential-store.mjs",
+    "lib/memorax-code-adapter-common/src/credentials/windows-dpapi.mjs",
     "lib/memorax-code-adapter-common/src/hooks/ensure-backend-runner.mjs",
     "lib/memorax-code-adapter-common/src/windows-cli-invocation.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-memory-auto-build.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-memory-job-context.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-memory-job-marker.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-memory-job-supervisor.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-memory-job-worker.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-procedure-memory-context.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-memory-update-policy-evaluator.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-memory-update-policy.mjs",
+    "lib/memorax-code-adapter-common/src/repo-memory/repo-user-profile-context.mjs",
     "lib/memorax-code-backend/dist/server.js",
     "lib/memorax-code-backend/dist/memorax-cli.js",
     "lib/memorax-code-backend/dist/service-entrypoint.js",
@@ -170,7 +216,35 @@ async function validateStaging(packageRoot) {
     "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/runtime-hooks/memory-turn.mjs",
     "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/backend-connection.mjs",
     "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/runtime-record.mjs",
+    "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/credentials/linux-secret-service.mjs",
+    "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/credentials/macos-keychain.mjs",
+    "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/credentials/secure-command.mjs",
+    "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/credentials/trial-credential-record.mjs",
+    "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/credentials/trial-credential-store.mjs",
+    "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/credentials/windows-dpapi.mjs",
     "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/hooks/ensure-backend-runner.mjs",
+    "lib/memorax-code-claude-marketplace/plugins/memorax-code-claude-adapter/memorax-code-adapter-common/src/hooks/memory-skill-reminder-policy.mjs",
+    "lib/memorax-code-dsh-adapter/package.json",
+    "lib/memorax-code-dsh-adapter/cordis.patch.yml",
+    "lib/memorax-code-dsh-adapter/src/index.mjs",
+    "lib/memorax-code-dsh-adapter/src/backend-client.mjs",
+    "lib/memorax-code-dsh-adapter/src/dsh-message.mjs",
+    "lib/memorax-code-dsh-adapter/src/dsh-version.mjs",
+    "lib/memorax-code-dsh-adapter/src/http-client.mjs",
+    "lib/memorax-code-dsh-adapter/src/personal-context-worker.mjs",
+    "lib/memorax-code-dsh-adapter/src/personal-context.mjs",
+    "lib/memorax-code-dsh-adapter/src/plugin.mjs",
+    "lib/memorax-code-dsh-adapter/src/profile-lifecycle.mjs",
+    "lib/memorax-code-dsh-adapter/src/protocol.mjs",
+    "lib/memorax-code-dsh-adapter/src/runtime-state.mjs",
+    "lib/memorax-code-dsh-adapter/hooks/repo-memory-job.mjs",
+    "lib/memorax-code-dsh-adapter/skills/memorax-code/SKILL.md",
+    "lib/memorax-code-opencode-adapter/src/plugin.mjs",
+    "lib/memorax-code-opencode-adapter/src/plugin-install.mjs",
+    "lib/memorax-code-opencode-adapter/src/cli.mjs",
+    "lib/memorax-code-opencode-adapter/src/repo-memory-server-runner.mjs",
+    "lib/memorax-code-opencode-adapter/hooks/repo-memory-job.mjs",
+    "lib/memorax-code-opencode-adapter/skills/memorax-code/SKILL.md",
   ]) {
     if (!(await stat(join(packageRoot, requiredPath)).catch(() => undefined))?.isFile()) {
       throw new Error(`staged npm package is missing required runtime entrypoint: ${requiredPath}`);
@@ -180,6 +254,9 @@ async function validateStaging(packageRoot) {
     const relativePath = relative(packageRoot, path);
     if (!isAllowedNpmPackPath(relativePath)) {
       throw new Error(`undeclared staged path: ${relativePath}`);
+    }
+    if (entry.isFile() && !isAllowedNpmPackFilePath(relativePath)) {
+      throw new Error(`forbidden staged path: ${relativePath}`);
     }
     if (entry.isSymbolicLink()) {
       throw new Error(`staged npm package contains a symbolic link: ${relativePath}`);

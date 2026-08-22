@@ -401,7 +401,7 @@ test("combined memory hook starts Repo Memory build for the Backend-authorized w
   }
 });
 
-test("automatic retrieval and reminders share one Codex Hook payload", async () => {
+test("automatic retrieval, reminders, and user notices share one Codex Hook payload", async () => {
   const root = await mkdtemp(join(tmpdir(), "memorax-code-codex-retrieval-reminder-"));
   const memoraxCodeHome = join(root, "memorax-code");
   const requests = [];
@@ -412,7 +412,13 @@ test("automatic retrieval and reminders share one Codex Hook payload", async () 
     requests.push({ path: req.url, body: requestBody });
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(req.url === "/memory/turn-start"
-      ? { ok: true, additionalContext: `Retrieved context for ${requestBody.turnId}.` }
+      ? {
+          ok: true,
+          ...(requestBody.turnId === "turn-1"
+            ? { additionalContext: `Retrieved context for ${requestBody.turnId}.` }
+            : {}),
+          userNotice: `Quota notice for ${requestBody.turnId}.`,
+        }
       : { ok: true }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -448,12 +454,17 @@ test("automatic retrieval and reminders share one Codex Hook payload", async () 
     }, env);
 
     assert.equal(first.code, 0, first.stderr);
-    assert.equal(
-      reminderContext(first.stdout),
-      `Retrieved context for turn-1.\n\n${MEMORY_REMINDER_CONTEXT}`,
-    );
+    assert.deepEqual(JSON.parse(first.stdout), {
+      systemMessage: "Quota notice for turn-1.",
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: `Retrieved context for turn-1.\n\n${MEMORY_REMINDER_CONTEXT}`,
+      },
+    });
     assert.equal(second.code, 0, second.stderr);
-    assert.equal(reminderContext(second.stdout), "Retrieved context for turn-2.");
+    assert.deepEqual(JSON.parse(second.stdout), {
+      systemMessage: "Quota notice for turn-2.",
+    });
     assert.deepEqual(requests.map((request) => request.path), [
       "/memory/turn-start",
       "/memory/skill-reminder",
@@ -747,6 +758,37 @@ test("concurrent capture Hooks preserve every session and workspace record", asy
       assert.equal(registry.sessions[sessionId].codexSessionId, sessionId);
       assert.equal(workspaces.sessions[sessionId].sessionId, sessionId);
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("capture Hook falls back to HOME when MEMORAX_CODE_HOME is empty", async () => {
+  const root = await mkdtemp(join(tmpdir(), "memorax-code-codex-capture-empty-home-"));
+  const home = join(root, "home");
+  const workspace = join(root, "workspace");
+  const memoraxCodeHome = join(home, ".memorax-code");
+  try {
+    await mkdir(workspace, { recursive: true });
+    const result = await runCaptureHook({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "empty-home-session",
+      turn_id: "empty-home-turn",
+      transcript_path: join(root, "empty-home-session.jsonl"),
+      cwd: workspace,
+    }, { HOME: home, MEMORAX_CODE_HOME: "" });
+
+    assert.equal(result.code, 0, result.stderr);
+    const registry = JSON.parse(await readFile(
+      join(memoraxCodeHome, "adapters", "codex", "session-registry.json"),
+      "utf8",
+    ));
+    const workspaces = JSON.parse(await readFile(
+      join(memoraxCodeHome, "adapters", "codex", "workspaces.json"),
+      "utf8",
+    ));
+    assert.equal(registry.sessions["empty-home-session"].codexSessionId, "empty-home-session");
+    assert.equal(workspaces.sessions["empty-home-session"].sessionId, "empty-home-session");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

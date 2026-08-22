@@ -22,17 +22,25 @@ const REPOSITORY_SCOPE = {
   boundWorkspaceRoot: "/automatic-memory-tests",
 };
 
-test("automatic memory writeback accepts a normalized completed turn", async () => {
+test("automatic memory writeback accepts and redacts a normalized completed turn", async () => {
   const requests = [];
   const runtime = createAutomaticMemoryWritebackRuntime();
+  const token = ["ghp", "S".repeat(36)].join("_");
+  const crossingToken = ["ghp", "C".repeat(36)].join("_");
+  const password = "private-assistant-password";
+  const userPrefix = `Remember the deployment token ${token}. Keep `;
+  const maxMessageChars = userPrefix.length + 8;
   try {
     assert.deepEqual(runtime.enqueue({
       client: "codex",
       sessionKey: "session-automatic-normalized",
-      userText: "Remember the normalized turn input.",
-      assistantText: "The normalized automatic writeback was accepted.",
+      userText: `${userPrefix}${crossingToken}${"x".repeat(1_000_001)}`,
+      assistantText: `Use the credential store; password=${password}`,
       repositoryScope: REPOSITORY_SCOPE,
-      env: WRITEBACK_ENV,
+      env: {
+        ...WRITEBACK_ENV,
+        MEMORAX_CODE_MEMORY_WRITEBACK_MAX_MESSAGE_CHARS: String(maxMessageChars),
+      },
       fetchImpl: memoraxFetch(requests),
       memoryObservabilitySource: "codex_hook_writeback",
     }), { accepted: true });
@@ -41,9 +49,12 @@ test("automatic memory writeback accepts a normalized completed turn", async () 
 
     assert.equal(requests[0].url, "http://memorax.test/v1/memories/add");
     assert.deepEqual(requests[0].body.messages.map(({ role, content }) => ({ role, content })), [
-      { role: "user", content: "Remember the normalized turn input." },
-      { role: "assistant", content: "The normalized automatic writeback was accepted." },
+      { role: "user", content: "Remember the deployment token [REDACTED:API_KEY]. Keep" },
+      { role: "assistant", content: "Use the credential store; password=[REDACTED:CREDENTIAL]" },
     ]);
+    assert.equal(JSON.stringify(requests[0]).includes(token), false);
+    assert.equal(JSON.stringify(requests[0]).includes("ghp_C"), false);
+    assert.equal(JSON.stringify(requests[0]).includes(password), false);
     assert.equal(requests[0].body.user_id, "user-1@automatic-memory-tests");
     assert.match(
       requests[0].body.metadata.idempotency_key,
@@ -259,7 +270,7 @@ test("automatic memory writeback never merges clients with the same repository a
   }
 });
 
-test("automatic memory writeback chunks a normalized long turn", async () => {
+test("automatic memory writeback validates a normalized long decimal before chunking", async () => {
   const requests = [];
   const runtime = createAutomaticMemoryWritebackRuntime();
   try {
@@ -267,7 +278,7 @@ test("automatic memory writeback chunks a normalized long turn", async () => {
       client: "codex",
       sessionKey: "session-automatic-chunk",
       userText: "Summarize",
-      assistantText: "abcdefghijklmnopqrstuvwxyz",
+      assistantText: "123456789.6059746146202087",
       repositoryScope: REPOSITORY_SCOPE,
       env: {
         ...WRITEBACK_ENV,
@@ -283,9 +294,9 @@ test("automatic memory writeback chunks a normalized long turn", async () => {
     assert.deepEqual(requests.map((request) => request.body.chunk.index), [0, 1, 2]);
     assert.deepEqual(requests.map((request) => request.body.chunk.count), [3, 3, 3]);
     assert.deepEqual(requests.map((request) => request.body.messages.map((message) => message.content)), [
-      ["Summarize", "abcdefghij"],
-      ["ijklmnopqr"],
-      ["qrstuvwxyz"],
+      ["Summarize", "123456789."],
+      ["9.60597461"],
+      ["6146202087"],
     ]);
   } finally {
     runtime.close();

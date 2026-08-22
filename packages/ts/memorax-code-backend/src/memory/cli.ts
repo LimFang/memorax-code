@@ -22,11 +22,16 @@ import {
 } from "../repository/scope.js";
 import { isTraceClient, type TraceClient } from "../trace/context.js";
 import { readCurrentTraceTurn, recordTraceEvent } from "../trace/store.js";
+import {
+  claimQuotaNotice,
+  type QuotaNoticeClaimer,
+} from "./quota-notice.js";
 
 type MemoryCliOptions = {
   cwd?: string;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
+  claimQuotaNotice?: QuotaNoticeClaimer;
 };
 
 type MemoryCliResult = {
@@ -45,6 +50,7 @@ type MemoryCliResult = {
   workspaceScopeFallbackReason?: "git_metadata_invalid";
   userAction?: string;
   userNotice?: string;
+  quotaNotice?: string;
   searchEnabled?: boolean;
   addEnabled?: boolean;
   config?: unknown;
@@ -146,6 +152,7 @@ async function memorySearch(args: string[], options: MemoryCliOptions): Promise<
     {
       config: repositoryMemory.memory.config,
       diagnosticLogger: backendDebug,
+      env: options.env,
       fetchImpl: options.fetchImpl,
       observability: observability.hook,
       observabilitySource: "memory_cli",
@@ -154,6 +161,13 @@ async function memorySearch(args: string[], options: MemoryCliOptions): Promise<
   );
   await observability.flush();
   if (!response.ok) return { ok: false, action: "memory.search", query, error: response.error };
+  const quotaNotice = response.result.quota
+    ? await (options.claimQuotaNotice ?? claimQuotaNotice)(
+      repositoryMemory.memory.config,
+      response.result.quota,
+      { diagnosticLogger: backendDebug, env: options.env },
+    )
+    : undefined;
   const payload = isRecord(response.result.tool_result_payload) ? response.result.tool_result_payload : {};
   return {
     ok: true,
@@ -164,6 +178,7 @@ async function memorySearch(args: string[], options: MemoryCliOptions): Promise<
     answer: typeof payload.answer === "string" ? payload.answer : "",
     items: Array.isArray(payload.items) ? payload.items : [],
     receipt: response.result.dispatch_receipt ?? null,
+    ...(quotaNotice ? { quotaNotice } : {}),
   };
 }
 
@@ -225,12 +240,20 @@ async function memoryAdd(args: string[], options: MemoryCliOptions): Promise<Mem
   );
   await observability.flush();
   if (!response.ok) return { ok: false, action: "memory.add", error: response.error };
+  const quotaNotice = response.result.quota
+    ? await (options.claimQuotaNotice ?? claimQuotaNotice)(
+      repositoryMemory.memory.config,
+      response.result.quota,
+      { diagnosticLogger: backendDebug, env },
+    )
+    : undefined;
   return {
     ok: true,
     action: "memory.add",
     provider: "memory.memorax",
     ...memoryCliIdentityFields(repositoryMemory.memory),
     receipt: response.result.dispatch_receipt ?? null,
+    ...(quotaNotice ? { quotaNotice } : {}),
   };
 }
 
@@ -281,7 +304,7 @@ async function resolveMemoryCliRepositoryMemory(options: MemoryCliOptions): Prom
   });
   if (!commandMemory.ok || !commandMemory.memory.scope) return commandMemory;
   if (turnMemory?.ok && (!turnMemory.memory.scope || !repositoryMemoryScopesMatch(commandMemory.memory.scope, turnMemory.memory.scope))) {
-    const clientLabel = traceBinding?.client === "claude" ? "Claude" : "Codex";
+    const clientLabel = traceClientLabel(traceBinding?.client);
     return {
       ok: false,
       reason: "workspace_scope_mismatch",
@@ -297,9 +320,9 @@ function memoryCliRepositoryFailure(
   fields: Pick<MemoryCliResult, "query"> = {},
 ): MemoryCliResult {
   const userAction = failure.reason === "workspace_scope_mismatch"
-    ? "Start a new Codex or Claude Code session from the target repository or local workspace."
+    ? "Start a new Codex, Claude Code, DSH, or OpenCode session from the target repository or local workspace."
     : failure.reason === "workspace_scope_unavailable"
-      ? "Start a new Codex or Claude Code session from the target repository or local workspace. If the problem continues, make sure its .git metadata is readable and valid."
+      ? "Start a new Codex, Claude Code, DSH, or OpenCode session from the target repository or local workspace. If the problem continues, make sure its .git metadata is readable and valid."
       : undefined;
   return {
     ok: false,
@@ -382,6 +405,11 @@ async function memoryCliObservability(
 function memoryCliTraceBinding(
   env: Record<string, string | undefined>,
 ): MemoryCliTraceBinding | undefined {
+  if (env.DSH_SHELL === "1") {
+    const expectedSessionId = env.DSH_SESSION_ID?.trim();
+    return expectedSessionId ? { client: "dsh", expectedSessionId } : undefined;
+  }
+
   const explicitClientRaw = env.MEMORAX_CODE_MEMORY_CLI_TRACE_CLIENT;
   const explicitSessionIdRaw = env.MEMORAX_CODE_MEMORY_CLI_TRACE_SESSION_ID;
   if (explicitClientRaw !== undefined || explicitSessionIdRaw !== undefined) {
@@ -399,6 +427,13 @@ function memoryCliTraceBinding(
 
 function memoryCliTraceEventType(event: MemoryObservabilityEvent): string {
   return event.operation === "writeback" ? "memory_cli_add" : "memory_cli_search";
+}
+
+function traceClientLabel(client: TraceClient | undefined): string {
+  if (client === "claude") return "Claude";
+  if (client === "dsh") return "DSH";
+  if (client === "opencode") return "OpenCode";
+  return client === "codex" ? "Codex" : "coding agent";
 }
 
 function memoryAddContentOptions(

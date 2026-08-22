@@ -205,6 +205,7 @@ export async function startBackendService(
       process.execPath,
       [serverPath, "--memorax-code-backend-instance", instanceId],
       {
+        cwd: serviceDir(options),
         detached: true,
         env: withLoopbackProxyBypass({
           ...process.env,

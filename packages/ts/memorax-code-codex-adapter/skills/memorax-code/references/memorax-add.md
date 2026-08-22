@@ -1,6 +1,6 @@
 # MemoraX Code Coding Memory Add
 
-Use these instructions only to add reusable coding knowledge through `memorax-cli`. Invoke the skill as `$memorax-code` in Codex or `/memorax-code` in Claude Code; do not route memory operations through the lifecycle-only `memorax-code` CLI. Do not use this authority for personal procedures, interaction preferences, generated repository facts, or one-off task details.
+Use these instructions only to add reusable coding knowledge through `memorax-cli`. Invoke the skill as `$memorax-code` in Codex or `/memorax-code` in Claude Code. In OpenCode, ask the agent to use the `memorax-code` skill by name. Do not route memory operations through the lifecycle-only `memorax-code` CLI. Do not use this authority for personal procedures, interaction preferences, generated repository facts, or one-off task details.
 
 ## Eligible Knowledge
 
@@ -82,5 +82,7 @@ Do not add secrets, credentials, private URLs, raw authorization headers, exact 
 Do not add speculation, assistant-only praise, or a current instruction merely because it contains "remember". Return to `SKILL.md` when the content belongs to personal memory or repo memory.
 
 ## Output
+
+If a successful Add returns `quotaNotice`, or prints it as a quota-reminder line in the default CLI output, present the complete reminder once and prominently before the normal result summary. Do not reduce it to only a percentage or omit its account URL or conditional local Mark ID retrieval instructions. Never run `memorax-code account --show-mark-id` for the user, ask for its output, or reproduce a Mark ID in chat. Treat the reminder as user-facing operational output, not coding memory content, and continue the current task.
 
 After an add request is accepted, confirm briefly that it was submitted for processing and identify the reusable coding lesson at a high level. If add is disabled or fails, report the issue and continue without bypassing the CLI.
