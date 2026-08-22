@@ -310,12 +310,6 @@ test("memorax-code start preserves custom Claude provider settings while enablin
     assert.equal(adapterState.claudeSkillDelivery, "plugin");
     assert.equal(adapterState.claudePluginSkillsRoot, join(pluginCli.pluginInstallPath, "skills"));
     assert.equal(await pathExists(join(claudeHome, "skills", "memorax-code")), false);
-    const viewer = await fetch(`http://127.0.0.1:${port}/memory-viewer/api/summary?client=claude-code`)
-      .then((response) => response.json());
-    assert.equal(viewer.summary.turnCount, 0);
-    assert.equal(viewer.activities.length, 0);
-    assert.doesNotMatch(JSON.stringify(viewer), /private lifecycle Claude prompt|lifecycle-session|lifecycle-turn/);
-
     const status = await runCli(cliPath, [
       "status", "--json",
       "--home", home,

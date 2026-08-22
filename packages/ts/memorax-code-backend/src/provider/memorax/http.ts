@@ -68,37 +68,6 @@ export async function postMemoraxJson(
   }
 }
 
-export async function getMemoraxJson(
-  config: MemoraxAdapterConfig,
-  path: string,
-  fetchImpl: typeof fetch,
-): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
-  try {
-    const response = await fetchImpl(`${config.baseUrl}${path}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Token ${config.apiKey}`,
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
-      await response.arrayBuffer().catch(() => undefined);
-      throw createMemoraxRequestError(`MemoraX HTTP ${response.status}`, "http", {
-        status: response.status,
-        retryAfterMs,
-      });
-    }
-    return await response.json().catch(() => null);
-  } catch (error) {
-    throw normalizeMemoraxRequestError(error, controller.signal.aborted);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 export function memoraxInvocationFailure(error: unknown): MemoraxInvocationFailure {
   const requestError = error instanceof Error ? error as MemoraxRequestError : undefined;
   return {

@@ -13,8 +13,7 @@
     "dev": "tsc --watch --preserveWatchOutput",
     "dev:backend": "node --watch dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --test-timeout=5000 --test-force-exit \"test/**/*.test.mjs\"",
-    "test:memory-viewer": "npm run build && node --test --test-timeout=5000 --test-force-exit test/viewer/http/memory-viewer-routes.test.mjs"
+    "test": "npm run build && node --test --test-timeout=5000 --test-force-exit \"test/**/*.test.mjs\""
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
