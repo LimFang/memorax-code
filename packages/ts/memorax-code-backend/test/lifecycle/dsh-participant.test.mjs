@@ -291,6 +291,34 @@ test("setup-marked DSH preparation failures keep the Backend available", async (
   }
 });
 
+test("setup-marked DSH quiesce failures degrade without blocking the Backend", async () => {
+  const fixture = await createFixture();
+  try {
+    mkdirSync(dirname(fixture.statePath), { recursive: true });
+    writeJson(fixture.statePath, { version: 999 });
+
+    const strict = runCli(fixture, "start", ["--clients", "dsh"]);
+    assert.equal(strict.status, 1, `${strict.stdout}\n${strict.stderr}`);
+    assert.equal(JSON.parse(strict.stdout).dshAdapter.reason, "state_invalid");
+
+    const started = runCli(fixture, "start", ["--clients", "dsh"], {
+      MEMORAX_CODE_DSH_ADAPTER_OPTIONAL: "1",
+    });
+    assert.equal(started.status, 0, `${started.stdout}\n${started.stderr}`);
+    const report = JSON.parse(started.stdout);
+    assert.equal(report.ok, true);
+    assert.equal(report.degraded, true);
+    assert.equal(report.backend.ok, true);
+    assert.equal(report.dshAdapter.action, "dsh-plugin-quiesce");
+    assert.equal(report.dshAdapter.reason, "state_invalid");
+    assert.equal(report.dshAdapter.optional, true);
+    assert.equal(existsSync(fixture.pidPath), true);
+  } finally {
+    runCli(fixture, "stop", ["--clients", "none"]);
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("an existing DSH Profile with an unavailable command needs attention", async () => {
   const fixture = await createFixture();
   try {
