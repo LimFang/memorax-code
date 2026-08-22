@@ -206,10 +206,18 @@ memorax-code start --clients dsh
 memorax-code status --clients dsh
 ```
 
+Automatic DSH discovery is optional: an unavailable DSH integration is
+reported as degraded without blocking the Backend or another detected client.
+The explicit commands above are strict and return a failure until DSH is ready.
+
 MemoraX Code discovers existing Profiles under `$DSH_HOME/profiles`;
 `DSH_HOME` defaults to `~/.dsh`. A `no_existing_profiles` result means DSH has
 not created a valid Profile in that home. A `dsh_version_unavailable` result
-means the selected `dsh` command did not return a valid semantic version. The
+means neither the selected DSH command nor an existing Profile-linked DSH
+runtime supplied a valid semantic version. A `dsh_profile_runtime_stale` result
+means that Profile-linked package is invalid or its original package cache is
+no longer available. Repair or relaunch DSH itself, then rerun the MemoraX Code
+start command. MemoraX Code never invokes `npx` or installs or updates DSH. The
 tested baseline is `0.1.0-rc.6`; another valid version is allowed but marked
 untested. A `pnpm_not_found` result means DSH's native Profile plugin manager
 could not find `pnpm` on `PATH`; install `pnpm`, then rerun the start command.
