@@ -175,17 +175,7 @@ separate MemoraX queries and writeback described above.
 
 The DSH Session Event Log remains client-owned native history and is read only
 for the exact Turn interval. MemoraX Code records normalized DSH trace events
-but does not copy the raw log or its path into retained trace. Memory Viewer
-uses only normalized, client-qualified DSH operational events and retained
-trace; it never reads the native Event Log.
-
-The local `/memory-viewer` surface is a content-free activity summary. It must
-not expose conversation or memory text, session/turn identifiers, paths, or
-raw trace details. Its bootstrap URL contains an access token; do not copy
-that URL into logs, screenshots, or public issues. The projection covers
-Codex, Claude Code, DSH, and OpenCode while keeping their identities isolated.
-Live DSH memory events without a client-qualified TraceContext fail closed at
-the Viewer boundary.
+but does not copy the raw log or its path into retained trace.
 
 Generated `.repo_memory/` content, personal procedures, and profile preferences
 remain local and are Git-ignored by the supported workflow. Review and redact

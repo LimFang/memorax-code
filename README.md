@@ -129,9 +129,6 @@ the current repository.
 > The prompts above are only for quick verification. In normal use, you do not
 > need to invoke the MemoraX Code skill to add memory manually. It writes
 > relevant memory in the background and guides agents to search when useful.
-> In the [Memory Viewer](http://127.0.0.1:8787/memory-viewer), you can switch
-> among Codex, Claude Code, DeepSeek Harness, and OpenCode to view content-free
-> local activity and status.
 
 ## Four Clear Memory Boundaries
 
@@ -162,7 +159,6 @@ writing when the durable intent or target is unclear.
 | **Background Repo Memory maintenance** | Automatically organizes repository structure, entry points, and history evidence in the background, then updates them according to policy to reduce repeated searching and summarization. |
 | **Active memory control** | Lets you search and add memory through the bundled MemoraX Code skill or the CLI. |
 | **Client integration** | Integrates with Codex, Claude Code, DeepSeek Harness, and OpenCode to trigger memory retrieval, reminders, and writeback. Automatic quota reminders are currently available in Codex, Claude Code, and OpenCode. |
-| **Local visualization** | Uses the local Memory Viewer to summarize activity counts, retrieval, and writeback status. |
 
 ## Your Memory, Your Control
 

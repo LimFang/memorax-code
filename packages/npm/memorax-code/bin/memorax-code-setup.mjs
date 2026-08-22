@@ -260,9 +260,6 @@ printPostinstallSummary(
   backendAndAdaptersStatus,
   backendAndAdapters.dshAdapterUnavailable,
 );
-if (backendAndAdaptersStatus === "enabled") {
-  log("View local memory activity: http://127.0.0.1:8787/memory-viewer");
-}
 if (backendAndAdaptersStatus !== "enabled") process.exit(1);
 if (!updateMode && readMemoraxInstallStatus()?.configured !== true) {
   logRed("Setup could not verify a ready MemoraX connection after Backend reconciliation.");

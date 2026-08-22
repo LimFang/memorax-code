@@ -408,11 +408,7 @@ async function executeMemoraxCodeStart(
       ...(opencodeAdapter ? { opencodeAdapter } : {}),
     };
   }
-  const backendStartOptions: BackendServiceOptions = {
-    ...serviceOptions,
-    claudeProjectsRoot: claudeProjectsRootForStart(argv, claudeAdapter),
-  };
-  const backend = await startBackendService(backendStartOptions);
+  const backend = await startBackendService(serviceOptions);
   if (!backend.ok) {
     const disabledCodex = codexAdapter
       ? await codexAdapterLifecycle.disable({ argv, serviceOptions })
@@ -445,18 +441,6 @@ async function executeMemoraxCodeStart(
     ...(dshAdapter ? { dshAdapter } : {}),
     ...(opencodeAdapter ? { opencodeAdapter } : {}),
   };
-}
-
-function claudeProjectsRootForStart(
-  argv: string[],
-  claudeAdapter: AdapterReport | undefined,
-): string | false {
-  if (claudeAdapter?.ok === false || claudeAdapter?.enabled !== true) return false;
-  const claudeHome = argValue(argv, "--claude-home")?.trim()
-    || process.env.CLAUDE_CONFIG_DIR?.trim()
-    || process.env.CLAUDE_HOME?.trim()
-    || join(homedir(), ".claude");
-  return join(resolve(claudeHome), "projects");
 }
 
 function expectedBackendUrl(serviceOptions: BackendServiceOptions): string {

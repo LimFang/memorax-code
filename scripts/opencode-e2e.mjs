@@ -299,44 +299,6 @@ try {
   await waitFor(async () => (
     await readFile(tracePath, "utf8").catch(() => "")
   ).includes('"type":"memory_writeback"'));
-  const viewer = await waitFor(async () => {
-    const response = await fetch(
-      `${connection.url}/memory-viewer/api/summary?client=opencode`,
-      { headers: { "x-memorax-code-backend-token": connection.token } },
-    );
-    if (response.status !== 200) return undefined;
-    const candidate = await response.json();
-    const summary = candidate.summary;
-    if (
-      summary?.turnCount !== 2
-      || summary.searchOperationCount !== 2
-      || summary.searchedMemoryCount !== 2
-      || summary.addOperationCount !== 2
-      || candidate.projects?.[0]?.repoMemory?.status !== "ready"
-    ) return undefined;
-    return candidate;
-  });
-  assert.equal(viewer.ok, true);
-  assert.equal(viewer.selectedClient, "opencode");
-  assert.deepEqual({
-    turnCount: viewer.summary.turnCount,
-    searchOperationCount: viewer.summary.searchOperationCount,
-    searchedMemoryCount: viewer.summary.searchedMemoryCount,
-    addOperationCount: viewer.summary.addOperationCount,
-  }, {
-    turnCount: 2,
-    searchOperationCount: 2,
-    searchedMemoryCount: 2,
-    addOperationCount: 2,
-  });
-  assert.deepEqual(viewer.projects[0].repoMemory, { status: "ready", reason: "usable" });
-  const viewerJson = JSON.stringify(viewer);
-  for (const privateValue of [PROMPT, REPLY, SECOND_PROMPT, SECOND_REPLY, "E2E recalled memory", sessionId]) {
-    assert.equal(viewerJson.includes(privateValue), false);
-  }
-  for (const field of ["prompt", "answer", "query", "results", "details", "sessionId", "turnId"]) {
-    assert.equal(viewerJson.includes(`"${field}"`), false);
-  }
 
   const traceEvents = (await readFile(tracePath, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
   const traceTypes = new Set(traceEvents.map((event) => event.type));
@@ -365,8 +327,6 @@ try {
     searchRequests: memoryStub.requests.filter((request) => request.path === "/v1/memories/search").length,
     addRequests: memoryStub.requests.filter((request) => request.path === "/v1/memories/add").length,
     repoMemoryJobStatus: repoMemoryJob.status,
-    repoMemoryStatus: viewer.projects[0].repoMemory.status,
-    viewerActivities: viewer.activities.length,
   }, null, 2));
 } finally {
   if (memoraxCode) {

@@ -73,7 +73,6 @@ body:
         - Local service start, stop, or status
         - Memory search
         - Memory saving
-        - Memory Viewer
         - Configuration
         - Documentation
         - Other
