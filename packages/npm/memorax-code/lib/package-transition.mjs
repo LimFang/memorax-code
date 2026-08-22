@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { withJsonFileLock, withJsonFileLockAsync } from "./memorax-code-adapter-common/src/config-utils.mjs";
 import {
   readJsonRuntimeRecord,
@@ -88,7 +88,7 @@ export function readPackageTransitionRecord(memoraxCodeHome = defaultMemoraxCode
 }
 
 export function runNpmPreinstallPackageTransition(options = {}) {
-  const memoraxCodeHome = nonEmptyString(options.memoraxCodeHome) ?? defaultMemoraxCodeHome();
+  const memoraxCodeHome = resolve(nonEmptyString(options.memoraxCodeHome) ?? defaultMemoraxCodeHome());
   const memoraxCodeBin = requiredString(options.memoraxCodeBin, "memoraxCodeBin");
   const packageVersion = requiredString(options.packageVersion, "packageVersion");
   const pidPath = backendPidPath(memoraxCodeHome);
@@ -158,7 +158,7 @@ export function runNpmPreinstallPackageTransition(options = {}) {
 }
 
 export async function runNpmPostinstallPackageTransition(options = {}) {
-  const memoraxCodeHome = nonEmptyString(options.memoraxCodeHome) ?? defaultMemoraxCodeHome();
+  const memoraxCodeHome = resolve(nonEmptyString(options.memoraxCodeHome) ?? defaultMemoraxCodeHome());
   const memoraxCodeBin = requiredString(options.memoraxCodeBin, "memoraxCodeBin");
   const transitionPath = packageTransitionPath(memoraxCodeHome);
   if (readJsonRuntimeRecord(transitionPath).status === "absent") {
