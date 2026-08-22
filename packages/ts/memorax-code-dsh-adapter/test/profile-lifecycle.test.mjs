@@ -650,6 +650,7 @@ test("uses the DSH runtime already linked by Profiles and refreshes it on reconc
   });
   writeFileSync(dshEntrypoint, "#!/usr/bin/env node\n");
 
+  let directDshVersion;
   let directProbeCalls = 0;
   let addCalls = 0;
   let packedFiles;
@@ -662,6 +663,9 @@ test("uses the DSH runtime already linked by Profiles and refreshes it on reconc
       if (invocation.command === "dsh") {
         directProbeCalls += 1;
         assert.deepEqual(invocation.args, ["--version"]);
+        if (directDshVersion) {
+          return { status: 0, stdout: `${directDshVersion}\n` };
+        }
         return {
           status: 1,
           error: Object.assign(new Error("missing dsh"), { code: "ENOENT" }),
@@ -778,11 +782,25 @@ test("uses the DSH runtime already linked by Profiles and refreshes it on reconc
     [firstState.runtimeBundleRoot.split(/[/\\]/).at(-1)],
   );
 
+  const activated = await withDshPluginLifecycleLock(options, (lifecycle) => (
+    lifecycle.activate()
+  ));
+  assert.equal(activated.ok, true, JSON.stringify(activated));
+  assert.equal(activated.enabled, true);
+  directDshVersion = "0.1.1-rc.2";
+  rmSync(dshPackageRoot, { recursive: true, force: true });
+  const stale = collectDshAdapterStatus(options);
+  assert.equal(stale.ok, false);
+  assert.equal(stale.reason, "dsh_profile_runtime_stale");
+  assert.equal(directProbeCalls, 1);
+
+  mkdirSync(dirname(dshEntrypoint), { recursive: true });
   writeJson(join(dshPackageRoot, "package.json"), {
     name: "@deepseek-ai/dsh",
     version: "0.1.1-rc.1",
     bin: { dsh: "lib/bin.js" },
   });
+  writeFileSync(dshEntrypoint, "#!/usr/bin/env node\n");
   const updated = await withDshPluginLifecycleLock(options, (lifecycle) => (
     lifecycle.ensureInstalled({ enabled: false })
   ));
@@ -797,12 +815,6 @@ test("uses the DSH runtime already linked by Profiles and refreshes it on reconc
     readdirSync(join(memoraxCodeHome, "adapters", "dsh", "runtime", "generations")),
     [updatedState.runtimeBundleRoot.split(/[/\\]/).at(-1)],
   );
-
-  rmSync(dshPackageRoot, { recursive: true, force: true });
-  const stale = collectDshAdapterStatus(options);
-  assert.equal(stale.ok, false);
-  assert.equal(stale.reason, "dsh_profile_runtime_stale");
-  assert.equal(directProbeCalls, 2);
 });
 
 async function createReconciliationFixture(t) {

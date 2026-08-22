@@ -163,7 +163,11 @@ export function collectDshAdapterStatus(options = {}) {
       return { ok: true, ...base, skipped: true, reason: "no_existing_profiles" };
     }
 
-    const { dshCommand, compatibility } = resolveDshCompatibility(options, paths, state);
+    const { dshCommand, compatibility } = resolveDshStatusCompatibility(
+      options,
+      paths,
+      state,
+    );
     const version = compatibility.dshVersion;
     const versionStatus = {
       dshVersionTested: compatibility.dshVersionTested,
@@ -1063,6 +1067,21 @@ function resolveDshCommand(options, paths, state) {
   return profileRuntime?.compatibility.compatible === true
     ? profileRuntime.dshCommand
     : "dsh";
+}
+
+function resolveDshStatusCompatibility(options, paths, state) {
+  if (state?.enabled !== true) return resolveDshCompatibility(options, paths, state);
+  const dshCommand = normalizeDshCommand(state.dshCommand);
+  if (!dshCommand) {
+    return {
+      dshCommand: state.dshCommand,
+      compatibility: unavailableDshCompatibility("dsh_version_unavailable"),
+    };
+  }
+  const profileRuntime = inspectProfileDshRuntime(paths, state);
+  return profileRuntime?.dshCommand === dshCommand
+    ? profileRuntime
+    : { dshCommand, compatibility: inspectDshCompatibility(options, paths, dshCommand) };
 }
 
 function resolveDshCompatibility(options, paths, state) {

@@ -278,7 +278,7 @@ async function executeMemoraxCodeStart(
   const quiescedDsh = dshLifecycle && (clients.dsh || previousClients?.dsh)
     ? await dshLifecycle.quiesce?.(lifecycleContext)
     : undefined;
-  if (quiescedDsh?.ok === false) {
+  if (quiescedDsh?.ok === false && !optionalDsh) {
     return {
       ok: false,
       action: "start",
@@ -388,9 +388,14 @@ async function executeMemoraxCodeStart(
       opencodeAdapter,
     };
   }
-  const preparedDshAdapter = markOptionalDshAdapter(clients.dsh && dshLifecycle
-    ? await dshLifecycle.prepareEnable(lifecycleBackendContext)
-    : undefined, optionalDsh);
+  const preparedDshAdapter = markOptionalDshAdapter(
+    quiescedDsh?.ok === false
+      ? quiescedDsh
+      : clients.dsh && dshLifecycle
+        ? await dshLifecycle.prepareEnable(lifecycleBackendContext)
+        : undefined,
+    optionalDsh,
+  );
   if (preparedDshAdapter?.ok === false && !optionalDsh) {
     const recovery = await recoverPreparationFailure("dsh_adapter_enable_failed");
     return {
