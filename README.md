@@ -202,6 +202,18 @@ The command follows the installed release channel and preserves configuration.
 Restart or refresh Codex, Claude Code, DeepSeek Harness, and OpenCode when a
 release changes installed integration assets.
 
+### Windows Upgrade Note
+
+If you are upgrading MemoraX Code v0.1.3-v0.1.6 to v0.1.7 on Windows, run:
+
+```powershell
+memorax-code stop
+memorax-code update --latest
+memorax-code
+```
+
+This one-time step is not required for later upgrades.
+
 ## Uninstall
 
 Run the product lifecycle before removing the npm package:
