@@ -81,6 +81,24 @@ npm install -g @memorax/memorax-code
 Fresh and already-stopped installations do not create a transition and remain
 stopped.
 
+On Windows, a Backend started by MemoraX Code 0.1.6 or earlier from an npm
+lifecycle may keep the old global package directory as its working directory.
+Windows then prevents npm from renaming that directory, and update fails with
+an `EBUSY` rename error before the newer package's preinstall can stop the old
+Backend. Upgrade an affected installation with:
+
+```sh
+memorax-code stop
+memorax-code update --latest
+memorax-code
+```
+
+The final command reuses existing configuration and credentials, reconciles
+the client integrations, starts the Backend, and completes the one-time setup
+migration. `memorax-code start` alone does not commit that migration. Once a
+fixed release has started the Backend from its private runtime directory,
+later updates do not require this workaround.
+
 ## Installed, but memory is unavailable
 
 The package and Backend can be healthy while MemoraX remains unconfigured. Run:

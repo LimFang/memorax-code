@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -80,6 +81,8 @@ test("a live Backend is retired before replacement and restored once afterward",
       ["start", "--home", fixture.home, "--json"],
       ["status", "--home", fixture.home, "--json"],
     ]);
+    const lifecycleCwd = await realpath(join(fixture.home, "runtime", "install"));
+    assert.ok(calls.every((call) => call.cwd === lifecycleCwd));
     assert.equal(calls[1].packageReplacement, true);
     assert.equal(calls[2].packageReplacement, false);
     assert.ok(calls.slice(1).every((call) => !call.args.includes("--clients")));
@@ -347,6 +350,7 @@ try { transitionState = JSON.parse(readFileSync(transitionPath, "utf8")).state; 
 appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({
   command,
   args,
+  cwd: process.cwd(),
   transitionState,
   packageReplacement: process.env.MEMORAX_CODE_PACKAGE_REPLACEMENT === "1",
 }) + "\\n");

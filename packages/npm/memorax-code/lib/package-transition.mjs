@@ -239,6 +239,7 @@ function readBackendPidState(path) {
 function runLifecycleCommand(options) {
   const spawn = options.spawnSyncImpl ?? spawnSync;
   const result = spawn(process.execPath, [options.memoraxCodeBin, ...options.args], {
+    cwd: join(options.memoraxCodeHome, "runtime", "install"),
     encoding: "utf8",
     env: { ...process.env, ...options.env, MEMORAX_CODE_HOME: options.memoraxCodeHome },
     stdio: ["ignore", "pipe", "pipe"],
