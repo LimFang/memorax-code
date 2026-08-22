@@ -330,6 +330,7 @@ async function createPackageFixture() {
     "lib/resolve-codex-command.mjs",
     "lib/run-entrypoint.mjs",
     "lib/vscode-extension-command.mjs",
+    "lib/windows-cli-invocation.mjs",
   ];
   for (const relativePath of copiedFiles) {
     const target = join(root, relativePath);
