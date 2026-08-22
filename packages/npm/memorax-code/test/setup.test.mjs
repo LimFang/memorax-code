@@ -280,6 +280,7 @@ async function runSetup({ existingCache = false, explicitCache = false, hookRunt
     "import { appendFileSync, existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';",
     "import { join } from 'node:path';",
     `appendFileSync(${JSON.stringify(logPath)}, 'memorax-code ' + process.argv.slice(2).join(' ') + '\\n');`,
+    `if (process.env.MEMORAX_CODE_DSH_ADAPTER_OPTIONAL === '1') appendFileSync(${JSON.stringify(logPath)}, 'dsh-adapter-optional ' + process.argv[2] + '\\n');`,
     `if (process.argv[2] === 'codex-plugin') appendFileSync(${JSON.stringify(logPath)}, 'codex-runtime ' + (process.env.CODEX_CLI_PATH ?? '') + '\\n');`,
     "if (process.argv[2] === '--version') { console.log('memorax-code 0.1.1-test'); process.exit(0); }",
     `const hookSnapshot = ${JSON.stringify(hookSnapshot)};`,
@@ -727,6 +728,8 @@ test("setup fresh install auto-detects Codex and skips an unavailable Claude run
     assert.match(run.log, /^memorax-code codex-plugin install --json$/m);
     assert.match(run.log, /^memorax-code start --clients codex,dsh$/m);
     assert.match(run.log, /^memorax-code status --clients codex,dsh$/m);
+    assert.match(run.log, /^dsh-adapter-optional start$/m);
+    assert.match(run.log, /^dsh-adapter-optional status$/m);
     assert.match(run.result.stderr, /Backend and selected adapters: .*Enabled/);
     const config = await readFile(join(run.memoraxCodeHome, "config.toml"), "utf8");
     assert.match(config, /\[clients\][^\r\n]*\r?\ncodex = true[^\r\n]*\r?\nclaude = false[^\r\n]*\r?\ndsh = true[^\r\n]*\r?\nopencode = false/m);
