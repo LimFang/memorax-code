@@ -385,7 +385,7 @@ function compactedOpenCodeMessages() {
         parentID: "user-1",
         time: { created: 2, completed: 3 },
       },
-      parts: [part("tool", "assistant-tail")],
+      parts: [],
     },
     {
       info: {
