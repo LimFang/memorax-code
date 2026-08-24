@@ -40,6 +40,11 @@ type QuotaNoticeState = Readonly<{
   last_notified_search_level: QuotaNoticeLevel | null;
 }>;
 
+type PendingQuotaNotice = Readonly<{
+  connectionFingerprint: string;
+  quota: MemoraxQuotaSnapshot;
+}>;
+
 type TransitionQuotaNoticeState = (
   initial: QuotaNoticeState,
   operation: (current: QuotaNoticeState) => QuotaNoticeState | undefined,
@@ -69,7 +74,7 @@ export type PendingQuotaNoticeRuntimeOptions = QuotaNoticeOptions & Readonly<{
 }>;
 
 export type PendingQuotaNoticeRuntime = Readonly<{
-  queue(quota: MemoraxQuotaSnapshot): void;
+  queue(config: MemoraxAdapterConfig, quota: MemoraxQuotaSnapshot): void;
   claim(config: MemoraxAdapterConfig): Promise<string | undefined>;
   close(): void;
 }>;
@@ -83,6 +88,7 @@ export const claimQuotaNotice: QuotaNoticeClaimer = async (
   const memoraxCodeHome = defaultMemoraxCodeHome(env);
   const transitionState = options.transitionState ?? transitionQuotaNoticeState;
   const timeoutMs = positiveTimeout(options.timeoutMs);
+  const deadlineAt = Date.now() + timeoutMs;
   const controller = new AbortController();
   const level = quotaNoticeLevel(quota);
   const initial = initialQuotaNoticeState(config);
@@ -129,16 +135,31 @@ export const claimQuotaNotice: QuotaNoticeClaimer = async (
   if (!claimed || level === undefined) return undefined;
   let markId: string | undefined;
   if (quota.limit === ANONYMOUS_QUOTA_LIMIT) {
-    try {
-      const credential = await (options.loadTrialCredential ?? loadTrialCredentialRecord)({
-        memoraxCodeHome,
-        env,
-      });
-      if (credential?.state === "ready" && credential.api_key === config.apiKey) {
-        markId = credential.mark_id;
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs > 0) {
+      let credentialTimeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const credential = await Promise.race([
+          (options.loadTrialCredential ?? loadTrialCredentialRecord)({
+            memoraxCodeHome,
+            env,
+            runtime: { timeoutMs: remainingMs },
+          }),
+          new Promise<never>((_resolve, reject) => {
+            credentialTimeout = setTimeout(
+              () => reject(new Error("Quota notice credential lookup timed out")),
+              remainingMs,
+            );
+          }),
+        ]);
+        if (credential?.state === "ready" && credential.api_key === config.apiKey) {
+          markId = credential.mark_id;
+        }
+      } catch {
+        options.diagnosticLogger?.("memorax_quota_notice.mark_id_load_failed", {});
+      } finally {
+        if (credentialTimeout) clearTimeout(credentialTimeout);
       }
-    } catch {
-      options.diagnosticLogger?.("memorax_quota_notice.mark_id_load_failed", {});
     }
   }
   return quotaNotice(quota, level, config.memoryOutputLanguage, markId);
@@ -151,22 +172,26 @@ export function createPendingQuotaNoticeRuntime(
     claimQuotaNotice: claim = claimQuotaNotice,
     ...noticeOptions
   } = options;
-  let pendingQuota: MemoraxQuotaSnapshot | undefined;
+  let pendingNotice: PendingQuotaNotice | undefined;
   let closed = false;
 
   return {
-    queue(quota) {
+    queue(config, quota) {
       if (closed || quota.featureCode !== "memory_write") return;
-      if (!pendingQuota || quotaRemainingRatio(quota) < quotaRemainingRatio(pendingQuota)) {
-        pendingQuota = { ...quota };
+      if (!pendingNotice || quotaRemainingRatio(quota) < quotaRemainingRatio(pendingNotice.quota)) {
+        pendingNotice = {
+          connectionFingerprint: quotaNoticeConnectionFingerprint(config),
+          quota: { ...quota },
+        };
       }
     },
     async claim(config) {
-      if (closed || !pendingQuota) return undefined;
-      const quota = pendingQuota;
-      pendingQuota = undefined;
+      if (closed || !pendingNotice) return undefined;
+      const notice = pendingNotice;
+      pendingNotice = undefined;
+      if (notice.connectionFingerprint !== quotaNoticeConnectionFingerprint(config)) return undefined;
       try {
-        return await claim(config, quota, noticeOptions);
+        return await claim(config, notice.quota, noticeOptions);
       } catch {
         options.diagnosticLogger?.("memorax_quota_notice.claim_failed", {});
         return undefined;
@@ -174,7 +199,7 @@ export function createPendingQuotaNoticeRuntime(
     },
     close() {
       closed = true;
-      pendingQuota = undefined;
+      pendingNotice = undefined;
     },
   };
 }
@@ -229,14 +254,18 @@ function readQuotaNoticeState(path: string): QuotaNoticeState | undefined {
 function initialQuotaNoticeState(config: MemoraxAdapterConfig): QuotaNoticeState {
   return {
     version: QUOTA_NOTICE_STATE_VERSION,
-    connection_fingerprint: createHash("sha256")
-      .update(config.baseUrl)
-      .update("\0")
-      .update(config.apiKey)
-      .digest("hex"),
+    connection_fingerprint: quotaNoticeConnectionFingerprint(config),
     last_notified_write_level: null,
     last_notified_search_level: null,
   };
+}
+
+function quotaNoticeConnectionFingerprint(config: MemoraxAdapterConfig): string {
+  return createHash("sha256")
+    .update(config.baseUrl)
+    .update("\0")
+    .update(config.apiKey)
+    .digest("hex");
 }
 
 function positiveTimeout(value: number | undefined): number {

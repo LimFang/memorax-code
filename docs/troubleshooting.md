@@ -135,19 +135,20 @@ again at 0%; raw quota counts are not shown.
 Automatic quota reminders are currently supported in Codex, Claude Code, and
 OpenCode. DeepSeek Harness does not currently surface these reminders.
 
-Routine reminders do not include a complete Mark ID. If this device uses an
-unregistered anonymous identity and the MemoraX account page requires its Mark
-ID, run this command yourself in a local terminal:
+A guest reminder displays the complete Mark ID when the ready local trial
+identity matches the active API key. Registered-account reminders do not
+include it. If a guest reminder cannot verify a matching local identity, it
+instead directs you to run this command yourself in a local terminal:
 
 ```sh
 memorax-code account --show-mark-id
 ```
 
-The command reads a ready local trial identity and prints only its Mark ID. Do
-not ask an Agent to run it or paste the output into a conversation, screenshot,
-or log. If no ready local trial identity exists, use `memorax-code setup`; a
-connection copied from another computer does not include that computer's
-device-local Mark ID.
+The command reads a ready local trial identity and prints only its Mark ID. A
+reminder or command output containing the Mark ID is sensitive; do not share it
+in a conversation, screenshot, or log. If no ready local trial identity exists,
+use `memorax-code setup`; a connection copied from another computer does not
+include that computer's device-local Mark ID.
 
 ## Backend does not start
 
