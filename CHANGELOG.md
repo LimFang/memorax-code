@@ -6,6 +6,27 @@ behavior.
 
 ## Unreleased
 
+## [0.1.8] - 2026-08-24
+
+### Added
+
+- Guest quota reminders can now display the matching anonymous identity's
+  Mark ID and 90-day guest term, while registered-account reminders remain
+  unchanged.
+
+### Changed
+
+- Clarified existing-account setup, 90-day guest mode, guest activation, and
+  cross-device configuration reuse in the installation guidance.
+
+### Fixed
+
+- Preserved OpenCode turns across native context compaction so automatic
+  writeback uses the original request and final visible reply instead of
+  synthetic compaction content.
+- Prevented standalone OpenCode Repo Memory initialization from contending
+  with the active client's database.
+
 ### Removed
 
 - Removed the local Memory Viewer. Memory search, automatic writeback, quota
@@ -100,6 +121,7 @@ Later upgrades do not require this workaround.
 - Required a non-empty MemoraX user ID and API key during interactive setup,
   with clearer registration guidance.
 
+[0.1.8]: https://www.npmjs.com/package/@memorax/memorax-code/v/0.1.8
 [0.1.7]: https://www.npmjs.com/package/@memorax/memorax-code/v/0.1.7
 [0.1.6]: https://www.npmjs.com/package/@memorax/memorax-code/v/0.1.6
 [0.1.5]: https://www.npmjs.com/package/@memorax/memorax-code/v/0.1.5
