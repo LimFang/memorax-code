@@ -90,18 +90,20 @@ key is not generated locally. The complete provisioning record is stored by
 the current user's platform credential backend. Foreground setup also writes
 the returned API key to the private `config.toml` so the effective connection
 can be reused and managed with the normal configuration surface. Both copies
-are credentials and must not be logged or published. Account, project, and
-device-mark metadata remain only in secure credential storage and are not
-written to the user configuration file.
+are credentials and must not be logged or published. Account and project
+metadata remain only in secure credential storage. Device-mark metadata is not
+written to the user configuration file; it is read only for explicit account
+inspection and matching anonymous quota reminders.
 
 Quota-reminder deduplication is stored separately in a private local runtime
 record containing a one-way connection fingerprint and reminder levels, never
-a raw API key or Mark ID. Routine quota reminders, status, and diagnostics do
-not expose the complete Mark ID. When registration requires it, the user can
-explicitly run `memorax-code account --show-mark-id` directly in a local
-terminal. That command prints the Mark ID but not the API key. Do not ask an
-Agent to run it, paste its output into a conversation, or include it in
-screenshots or logs.
+a raw API key or Mark ID. An anonymous quota reminder reads the ready secure
+trial credential only when its API key matches the active connection, then
+displays the complete Mark ID in the local coding-agent notice or CLI output.
+Registered-account reminders, status, and diagnostics do not expose it. The
+user can also explicitly run `memorax-code account --show-mark-id` directly in
+a local terminal. Neither path prints the API key. Treat conversations,
+screenshots, and logs containing a displayed Mark ID as sensitive.
 
 MemoraX-backed search, retrieval, and writeback require a Base User ID, API
 key, and network access. Foreground setup discloses automatic writeback before
