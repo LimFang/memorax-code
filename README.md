@@ -67,16 +67,42 @@ beforehand through its official `npx` workflow.
 npm install -g @memorax/memorax-code
 ```
 
-#### 2. Run Setup
+#### 2. Connect a MemoraX Account (Recommended)
+
+[Create a MemoraX account](https://platform.memorax.net/) or use an existing
+one, then run:
+
+```bash
+memorax-code setup --existing-account
+```
+
+> [!TIP]
+> Using MemoraX Code across devices? Find the MemoraX username and API key
+> needed by setup in `~/.memorax-code/config.toml` on a configured device, then
+> enter them locally during setup on another device. This file contains your
+> API key—keep it private and never paste it into chats or public issues.
+
+#### Or Try Without an Account (90-Day Guest Mode)
+
+To start immediately and connect an account later, run:
 
 ```bash
 memorax-code setup
 ```
 
-Setup automatically detects supported coding agents and completes an
-account-free connection. If you already have a MemoraX account, run
-`memorax-code setup --existing-account` instead. Restart or refresh every
-detected coding agent after setup.
+To activate your guest account, first run this command directly in your local
+terminal:
+
+```bash
+memorax-code account --show-mark-id
+```
+
+After obtaining the Mark ID, create your MemoraX account. The platform does
+not currently support attaching a Mark ID to an account that has already been
+registered.
+
+Both setup paths automatically detect supported coding agents. Restart or
+refresh every detected coding agent after setup.
 
 ### Installation Troubleshooting
 
@@ -85,8 +111,7 @@ If the initial setup does not work as expected, check these common cases:
 | Symptom | Recommended fix |
 | --- | --- |
 | Installation fails with an unsupported Node.js version | Run `node --version` and upgrade to Node.js 20 or later before reinstalling MemoraX Code. |
-| The package installed but setup did not start | This is expected. Run `memorax-code setup` from a normal interactive terminal. |
-| You want to use an existing MemoraX account | Run `memorax-code setup --existing-account` and enter the requested values locally. Never paste the API key into chats or public issues. |
+| The package installed but setup did not start | This is expected. Run the appropriate setup command above from a normal interactive terminal. |
 | Search, retrieval, or writeback is unavailable after setup | Run `memorax-code status` and `memorax-cli status`, then follow the detailed troubleshooting guide. |
 
 See [Configuration](docs/configuration.md) for supported settings and

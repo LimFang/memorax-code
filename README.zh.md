@@ -60,14 +60,36 @@ Harness 仍需满足自身的运行时要求；当前 DeepSeek Harness 版本要
 npm install -g @memorax/memorax-code
 ```
 
-#### 2. 运行安装引导
+#### 2. 注册或接入 MemoraX 账号（推荐）
+
+前往 [MemoraX](https://platform.memorax.net/) 注册账号；已有账号可直接使用，然后运行：
+
+```bash
+memorax-code setup --existing-account
+```
+
+> [!TIP]
+> 跨设备使用时，可在一台已配置设备的 `~/.memorax-code/config.toml` 中找到安装引导所需的
+> MemoraX 用户名和 API Key，再在其他设备的安装引导中本地输入。该文件包含您的 API Key，
+> 请妥善保管，不要粘贴到聊天记录或公开 Issue 中。
+
+#### 或免账号体验（90 天游客模式）
+
+如果您希望先体验并稍后再接入账号，请运行：
 
 ```bash
 memorax-code setup
 ```
 
-安装引导会自动检测受支持的 Coding Agent，并完成免账号接入。如果您已有 MemoraX 账号，请改为运行
-`memorax-code setup --existing-account`。完成后，请重启或刷新检测到的 Coding Agent。
+如果您希望将游客账号激活为正式账号，请先直接在本机终端运行：
+
+```bash
+memorax-code account --show-mark-id
+```
+
+获取 Mark ID 后，再前往 MemoraX 注册。当前暂不支持为已经注册的账号补绑 Mark ID。
+
+两种安装引导都会自动检测受支持的 Coding Agent。完成后，请重启或刷新检测到的 Coding Agent。
 
 ### 安装故障排查
 
@@ -76,8 +98,7 @@ memorax-code setup
 | 现象 | 建议处理方式 |
 | --- | --- |
 | 因 Node.js 版本不受支持导致安装失败 | 运行 `node --version` 检查版本，并升级到 Node.js 20 或更高版本后重新安装 MemoraX Code。 |
-| npm 包已安装，但没有进入安装引导 | 这是正常行为。请在正常的交互式终端中运行 `memorax-code setup`。 |
-| 希望使用已有的 MemoraX 账号 | 运行 `memorax-code setup --existing-account`，并只在本机输入所需信息。不要将 API Key 粘贴到聊天记录或公开 Issue 中。 |
+| npm 包已安装，但没有进入安装引导 | 这是正常行为。请在正常的交互式终端中选择并运行上方适合您的安装引导命令。 |
 | 完成安装引导后，搜索、召回或写回仍不可用 | 运行 `memorax-code status` 和 `memorax-cli status`，然后按照详细的故障排查指南处理。 |
 
 有关支持的配置项，请参阅[配置](docs/configuration.md)；
