@@ -55,7 +55,9 @@ shipped_docs = json.loads(Path(sys.argv[2]).read_text())
 readme = (package_root / "README.md").read_text()
 license_text = (package_root / "LICENSE").read_text()
 package_manifest = json.loads((package_root / "package.json").read_text())
-assert "npm install -g @memorax/memorax-code\nmemorax-code setup" in readme
+assert "npm install -g @memorax/memorax-code" in readme
+assert "```bash\nmemorax-code setup --existing-account\n```" in readme
+assert "```bash\nmemorax-code setup\n```" in readme
 assert "--foreground-scripts" not in readme
 assert license_text == Path("LICENSE").read_text()
 assert package_manifest["name"] == "@memorax/memorax-code"
