@@ -634,6 +634,55 @@ test("idle follows an OpenCode compaction continuation back to the original pend
     requests[1].body.messages.map((message) => message.info.id),
     ["user-original", "assistant-tail", "user-compaction", "user-continuation", "assistant-final"],
   );
+  assert.deepEqual(requests[1].body.messages[1], {
+    info: {
+      id: "assistant-tail",
+      sessionID: "session-compacted-turn",
+      role: "assistant",
+      parentID: "user-original",
+    },
+    parts: [],
+  });
+  assert.equal(messages[1].parts[0].type, "tool", "native SDK messages remain unchanged");
+});
+
+test("malformed compaction records remain pending until the SDK lineage is complete", async () => {
+  for (const [name, mutate] of [
+    ["missing tail id", (message) => { delete message.parts[0].tail_start_id; }],
+    ["blank tail id", (message) => { message.parts[0].tail_start_id = " "; }],
+    ["duplicate compaction part", (message) => { message.parts.push({ ...message.parts[0] }); }],
+  ]) {
+    const requests = [];
+    const messages = compactedMessages();
+    mutate(messages[2]);
+    const plugin = createPluginWithoutReminders({
+      backendConnection: { url: "http://127.0.0.1:8787" },
+      fetchImpl: responseSequence(requests, [{ ok: true }, { ok: true }]),
+    });
+    const hooks = await plugin(pluginInput({
+      client: { session: { async messages() { return { data: messages }; } } },
+    }));
+
+    await hooks["chat.message"](
+      { sessionID: "session-compacted-turn" },
+      promptOutput("user-original", "Implement the requested change."),
+    );
+    hooks.event(sessionIdleEvent("session-compacted-turn"));
+    await hooks.dispose();
+
+    assert.deepEqual(
+      requests.map((request) => new URL(request.url).pathname),
+      ["/memory/turn-start"],
+      name,
+    );
+
+    messages[2] = compactedMessages()[2];
+    hooks.event(sessionIdleEvent("session-compacted-turn"));
+    await hooks.dispose();
+
+    assert.equal(requests.length, 2, name);
+    assert.equal(requests[1].body.assistantMessageId, "assistant-final", name);
+  }
 });
 
 test("message.updated finalizes an interrupted compaction continuation", async () => {

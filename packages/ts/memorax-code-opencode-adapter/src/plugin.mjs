@@ -363,11 +363,12 @@ function turnLineage(messages, sessionId, userMessageId) {
       continue;
     }
     if (message.info.role !== "user") continue;
-    const compactionTailId = compactionTailStartId(message, sessionId);
-    if (compactionTailId) {
+    if (hasCompactionPart(message.parts)) {
+      const compactionTailId = compactionTailStartId(message, sessionId);
+      if (!compactionTailId || awaitingContinuation) return undefined;
       const tail = lineageAssistants.get(compactionTailId);
-      if (!tail || awaitingContinuation) return undefined;
-      evidence.push(tail, message);
+      if (!tail) return undefined;
+      evidence.push(minimalAssistantEvidence(tail), message);
       awaitingContinuation = true;
       continue;
     }
@@ -388,6 +389,10 @@ function turnLineage(messages, sessionId, userMessageId) {
   };
 }
 
+function hasCompactionPart(parts) {
+  return parts.some((part) => part?.type === "compaction");
+}
+
 function compactionTailStartId(message, sessionId) {
   const messageId = stringValue(message?.info?.id);
   const parts = message?.parts?.filter((part) => (
@@ -397,6 +402,18 @@ function compactionTailStartId(message, sessionId) {
   )) ?? [];
   if (parts.length !== 1) return undefined;
   return stringValue(parts[0].tail_start_id);
+}
+
+function minimalAssistantEvidence(message) {
+  return {
+    info: {
+      id: message.info.id,
+      sessionID: message.info.sessionID,
+      role: message.info.role,
+      parentID: message.info.parentID,
+    },
+    parts: [],
+  };
 }
 
 function isCompactionContinuation(message, sessionId) {
