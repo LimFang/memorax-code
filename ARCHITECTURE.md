@@ -273,8 +273,10 @@ calls the MemoraX trial-provision endpoint, and commits the returned API key and
 account metadata through adapter-common's secure credential port. The secure
 credential record is authoritative for provisioning reuse; setup also projects
 the API key into private user configuration. Account, project, and device-mark
-metadata remain in secure credential storage and do not replace the configured
-repository-scoped memory identity.
+metadata remain persisted only in secure credential storage. A matching
+anonymous quota reminder may read the device mark for user-facing account
+claiming, but it does not replace the configured repository-scoped memory
+identity.
 
 ### 3.2 Hook and retrieval data flow
 
@@ -604,7 +606,7 @@ and
 | Backend connection and managed-process ownership | Versioned private connection/token/PID records plus lifecycle lock/version validation | In-memory state in any one process |
 | Package replacement intent | Versioned private package-transition record plus its bounded lock | npm process state or the presence of installed package files |
 | Completed foreground setup | Versioned private setup-completion record written after final verification | Configuration-file presence, Backend liveness, or detected clients |
-| Quota-reminder deduplication | Versioned private local runtime record keyed by a one-way connection fingerprint; normalized MemoraX balances remain authoritative for the quota amount | Account registration status, raw API keys, and in-memory reminder state are not quota-reminder authority |
+| Quota reminders | Versioned private local runtime record keyed by a one-way connection fingerprint for deduplication; normalized MemoraX balances for the quota amount; a ready secure trial record matching the active API key for optional anonymous Mark ID text | Account registration status, raw API keys, and in-memory reminder state are not quota-reminder authority |
 | MemoraX memory results and Add acceptance | Normalized response from `provider/memorax` | Observability and trace |
 | Persisted current-turn operational state and trace history | Client-qualified local trace records | Diagnostics; not native content or general Turn-identity authority |
 | Repo Memory bundle | Repository-local `.repo_memory` files produced by the supervised job | Backend readiness and client-injected guidance |

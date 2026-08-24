@@ -4,6 +4,9 @@ import {
   withJsonFileLockAsync,
 } from "../../../memorax-code-adapter-common/src/config-utils.mjs";
 import {
+  loadTrialCredentialRecord,
+} from "../../../memorax-code-adapter-common/src/credentials/trial-credential-store.mjs";
+import {
   readJsonRuntimeRecord,
   writePrivateJsonRecord,
 } from "../../../memorax-code-adapter-common/src/runtime-record.mjs";
@@ -50,6 +53,7 @@ type TransitionQuotaNoticeState = (
 export type QuotaNoticeOptions = Readonly<{
   diagnosticLogger?: MemoryDiagnosticLogger;
   env?: Record<string, string | undefined>;
+  loadTrialCredential?: typeof loadTrialCredentialRecord;
   timeoutMs?: number;
   transitionState?: TransitionQuotaNoticeState;
 }>;
@@ -76,6 +80,7 @@ export const claimQuotaNotice: QuotaNoticeClaimer = async (
   options = {},
 ) => {
   const env = options.env ?? process.env;
+  const memoraxCodeHome = defaultMemoraxCodeHome(env);
   const transitionState = options.transitionState ?? transitionQuotaNoticeState;
   const timeoutMs = positiveTimeout(options.timeoutMs);
   const controller = new AbortController();
@@ -102,7 +107,7 @@ export const claimQuotaNotice: QuotaNoticeClaimer = async (
         claimed = true;
         return { ...current, [noticeField]: level };
       }, {
-        memoraxCodeHome: defaultMemoraxCodeHome(env),
+        memoraxCodeHome,
         signal: controller.signal,
         timeoutMs: LOCK_TIMEOUT_MS,
       }),
@@ -121,9 +126,22 @@ export const claimQuotaNotice: QuotaNoticeClaimer = async (
     if (timeout) clearTimeout(timeout);
   }
 
-  return claimed && level !== undefined
-    ? quotaNotice(quota, level, config.memoryOutputLanguage)
-    : undefined;
+  if (!claimed || level === undefined) return undefined;
+  let markId: string | undefined;
+  if (quota.limit === ANONYMOUS_QUOTA_LIMIT) {
+    try {
+      const credential = await (options.loadTrialCredential ?? loadTrialCredentialRecord)({
+        memoraxCodeHome,
+        env,
+      });
+      if (credential?.state === "ready" && credential.api_key === config.apiKey) {
+        markId = credential.mark_id;
+      }
+    } catch {
+      options.diagnosticLogger?.("memorax_quota_notice.mark_id_load_failed", {});
+    }
+  }
+  return quotaNotice(quota, level, config.memoryOutputLanguage, markId);
 };
 
 export function createPendingQuotaNoticeRuntime(
@@ -247,6 +265,7 @@ function quotaNotice(
   quota: MemoraxQuotaSnapshot,
   level: QuotaNoticeLevel,
   language: MemoraxAdapterConfig["memoryOutputLanguage"],
+  markId?: string,
 ): string {
   if (language === "zh") {
     const quotaName = quota.featureCode === "memory_write" ? "记忆写入" : "记忆搜索";
@@ -257,8 +276,18 @@ function quotaNotice(
         `请访问 ${MEMORAX_ACCOUNT_URL} 查看额度或管理账户。`,
       ].join(" ");
     }
+    if (markId) {
+      return [
+        `额度提醒：您的 MemoraX Code ${quotaName}额度${quotaStatus}。`,
+        "游客模式有效期为 90 天。",
+        `请访问 ${MEMORAX_ACCOUNT_URL} 查看额度、注册或管理账户。`,
+        `当前匿名身份的 Mark ID：\`${markId}\`。`,
+        "请妥善保管。",
+      ].join(" ");
+    }
     return [
       `额度提醒：您的 MemoraX Code ${quotaName}额度${quotaStatus}。`,
+      "游客模式有效期为 90 天。",
       `请访问 ${MEMORAX_ACCOUNT_URL} 查看额度、注册或管理账户。`,
       "若本机使用的是尚未注册的匿名身份，可以在本机终端运行 `memorax-code account --show-mark-id` 获取用于认领当前身份的 Mark ID。",
       "请妥善保管，不要在聊天中分享。",
@@ -274,8 +303,18 @@ function quotaNotice(
       `Visit ${MEMORAX_ACCOUNT_URL} to view your quota or manage your account.`,
     ].join(" ");
   }
+  if (markId) {
+    return [
+      `Quota reminder: Your MemoraX Code ${quotaName} quota ${quotaStatus}.`,
+      "Guest mode is available for 90 days.",
+      `Visit ${MEMORAX_ACCOUNT_URL} to view your quota, register, or manage your account.`,
+      `Mark ID for the current anonymous identity: \`${markId}\`.`,
+      "Keep it private.",
+    ].join(" ");
+  }
   return [
     `Quota reminder: Your MemoraX Code ${quotaName} quota ${quotaStatus}.`,
+    "Guest mode is available for 90 days.",
     `Visit ${MEMORAX_ACCOUNT_URL} to view your quota, register, or manage your account.`,
     "If this device uses an unregistered anonymous identity, run `memorax-code account --show-mark-id` in your local terminal to retrieve the Mark ID used to claim it.",
     "Keep it private and do not share it in chat.",
