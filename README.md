@@ -199,6 +199,9 @@ prompts, responses, recalled memory, reminder text, and local paths. Use the
 [local trace settings](docs/configuration.md#local-traces) to switch to
 metadata-only capture or disable a client's trace.
 
+Guest quota reminders may display the complete Mark ID. Treat reminder text
+and retained traces containing it as sensitive.
+
 Active memory operations send their query or selected content to MemoraX.
 Automatic writeback sends selected user instructions and the matching final
 Agent response from trusted workspace turns for extraction and storage. It

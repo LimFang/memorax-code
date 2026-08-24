@@ -20,9 +20,11 @@ import type {
   MemoryObservabilitySource,
 } from "./observability.js";
 import {
+  memoraxConfigFromEnv,
   memoryWritebackBufferEnabled,
   memoryWritebackEnabled,
   memoryWritebackMaxMessageChars,
+  type MemoraxAdapterConfig,
 } from "../provider/memorax/config.js";
 import type { RepositoryMemorySessionScopeUpgrade } from "./repository-session.js";
 import type {
@@ -90,12 +92,12 @@ export type AutomaticMemoryWritebackRuntime = {
 
 export type AutomaticMemoryWritebackRuntimeOptions = {
   diagnosticLogger?: MemoryDiagnosticLogger;
-  queueQuotaNotice?: (quota: MemoraxQuotaSnapshot) => void;
+  queueQuotaNotice?: (config: MemoraxAdapterConfig, quota: MemoraxQuotaSnapshot) => void;
 };
 
 type AutomaticMemoryWritebackState = {
   diagnosticLogger: MemoryDiagnosticLogger;
-  queueQuotaNotice?: (quota: MemoraxQuotaSnapshot) => void;
+  queueQuotaNotice?: (config: MemoraxAdapterConfig, quota: MemoraxQuotaSnapshot) => void;
   pendingWritebacks: Map<string, number>;
   writebackBuffer: MemoryWritebackBufferRuntime;
   accepting: boolean;
@@ -320,6 +322,7 @@ async function enqueueAutomaticMemoryWritebackAsync(
     const parts = memoryWritebackAddParts(decision, options.env ?? process.env);
     for (const [index, part] of parts.entries()) {
       for (let attempt = 1; attempt <= AUTOMATIC_MEMORY_WRITEBACK_MAX_ATTEMPTS; attempt += 1) {
+        const configResult = memoraxConfigFromEnv(options.env);
         const response = await invokeMemoraxMemoryProvider({
           sessionId: decision.sessionKey,
           prompt: part.messages.find((message) => message.role === "user")?.content ?? "",
@@ -338,6 +341,7 @@ async function enqueueAutomaticMemoryWritebackAsync(
             ...(part.chunk ? { chunk: part.chunk } : {}),
           },
         }, {
+          ...(configResult.ok ? { config: configResult.config } : {}),
           env: options.env,
           fetchImpl: options.fetchImpl,
           observability: options.memoryObservability,
@@ -375,7 +379,9 @@ async function enqueueAutomaticMemoryWritebackAsync(
           httpStatus: response.ok ? undefined : response.httpStatus,
         });
         if (response.ok) {
-          if (response.result.quota) queueQuotaNoticeBestEffort(state, response.result.quota);
+          if (response.result.quota && configResult.ok) {
+            queueQuotaNoticeBestEffort(state, configResult.config, response.result.quota);
+          }
           break;
         }
         if (!retrying) {
@@ -433,10 +439,11 @@ function trackAutomaticMemoryWriteback(
 
 function queueQuotaNoticeBestEffort(
   state: AutomaticMemoryWritebackState,
+  config: MemoraxAdapterConfig,
   quota: MemoraxQuotaSnapshot,
 ): void {
   try {
-    state.queueQuotaNotice?.(quota);
+    state.queueQuotaNotice?.(config, quota);
   } catch {
     state.diagnosticLogger("memory.automatic_writeback.quota_notice_queue_failed", {});
   }
