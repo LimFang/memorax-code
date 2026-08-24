@@ -69,9 +69,10 @@ memorax-code setup --existing-account
 ```
 
 > [!TIP]
-> 跨设备使用时，可在一台已配置设备的 `~/.memorax-code/config.toml` 中找到安装引导所需的
-> MemoraX 用户名和 API Key，再在其他设备的安装引导中本地输入。该文件包含您的 API Key，
-> 请妥善保管，不要粘贴到聊天记录或公开 Issue 中。
+> 跨设备使用时，可在一台已配置设备的 MemoraX Code 配置文件（默认位于
+> `~/.memorax-code/config.toml`）中找到安装引导所需的 MemoraX 用户名和 API Key，
+> 再在其他设备的安装引导中本地输入。该文件包含您的 API Key，请妥善保管，
+> 不要粘贴到聊天记录或公开 Issue 中。
 
 #### 或免账号体验（90 天游客模式）
 

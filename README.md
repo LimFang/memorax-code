@@ -78,9 +78,10 @@ memorax-code setup --existing-account
 
 > [!TIP]
 > Using MemoraX Code across devices? Find the MemoraX username and API key
-> needed by setup in `~/.memorax-code/config.toml` on a configured device, then
-> enter them locally during setup on another device. This file contains your
-> API key—keep it private and never paste it into chats or public issues.
+> needed by setup in the MemoraX Code configuration file on a configured device
+> (normally `~/.memorax-code/config.toml`), then enter them locally during setup
+> on another device. This file contains your API key—keep it private and never
+> paste it into chats or public issues.
 
 #### Or Try Without an Account (90-Day Guest Mode)
 

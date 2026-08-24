@@ -21,9 +21,8 @@ installation. For a source checkout and contributor setup, see
   Service in the current user session for setup-managed credentials.
 
 MemoraX-backed search, retrieval, and writeback require network access.
-First-time setup can create an account-free connection, so no account or API
-key is required beforehand. Existing MemoraX accounts remain supported through
-an explicit setup option.
+Connecting a MemoraX account is recommended. A 90-day account-free guest mode
+is also available if you want to try MemoraX Code before creating an account.
 
 For Remote SSH, WSL, or Dev Container use, install MemoraX Code inside the same
 remote environment as the client runtime.
@@ -43,9 +42,22 @@ An installation that was already stopped remains stopped.
 Do not use `--ignore-scripts` for a normal install or update. It skips the
 safe retirement and restoration of a running managed Backend.
 
-## 2. Run Setup
+## 2. Connect a MemoraX Account (Recommended)
 
-Run the installed command from a normal interactive terminal:
+[Create a MemoraX account](https://platform.memorax.net/) or use an existing
+one, then run this command from a normal interactive terminal:
+
+```bash
+memorax-code setup --existing-account
+```
+
+This mode asks for the username used by the existing MemoraX Code connection
+and accepts the API key through masked local terminal input. Never paste an API
+key into a chat, repository, screenshot, or public issue.
+
+### Or Try Without an Account (90-Day Guest Mode)
+
+To start immediately and connect an account later, run:
 
 ```bash
 memorax-code setup
@@ -57,15 +69,16 @@ asks only when either value cannot be detected safely, and creates or restores
 an account-free credential. The resulting API key is written to the private
 configuration together with the selected memory preferences.
 
-If you already have a MemoraX account, run:
+To activate your guest account, first run this command directly in your local
+terminal:
 
 ```bash
-memorax-code setup --existing-account
+memorax-code account --show-mark-id
 ```
 
-This mode asks for the username used by the existing MemoraX Code connection
-and accepts the API key through masked local terminal input. Never paste an API
-key into a chat, repository, screenshot, or public issue.
+After obtaining the Mark ID, create your MemoraX account. The platform does
+not currently support attaching a Mark ID to an account that has already been
+registered.
 
 Use `memorax-code setup --reconfigure` to replace an automatically reusable
 connection and re-detect its preferences. Setup detects supported clients,
