@@ -103,7 +103,6 @@ test("OpenCode SDK messages materialize only an exact completed normal turn", ()
     ["parent mismatch", (messages) => { messages[1].info.parentID = "other-user"; }, "message_identity_mismatch"],
     ["session mismatch", (messages) => { messages[1].info.sessionID = "other-session"; }, "message_identity_mismatch"],
     ["incomplete assistant", (messages) => { delete messages[1].info.time.completed; }, "assistant_not_completed"],
-    ["other assistant error", (messages) => { messages[1].info.error = { name: "UnknownError" }; }, "assistant_error"],
     ["summary assistant", (messages) => { messages[1].info.summary = true; }, "summary_message"],
     ["compaction turn", (messages) => { messages[0].parts.push(part("compaction", "user-1")); }, "compaction_message"],
   ]) {
@@ -115,6 +114,83 @@ test("OpenCode SDK messages materialize only an exact completed normal turn", ()
       assistantMessageId: "assistant-1",
     }), { ok: false, reason }, name);
   }
+
+  const providerFailure = openCodeMessages();
+  providerFailure[1].info.error = { name: "UnknownError" };
+  providerFailure[1].parts = [];
+  assert.deepEqual(openCodeMessageTurn(providerFailure, {
+    sessionId: "session-1",
+    userMessageId: "user-1",
+    assistantMessageId: "assistant-1",
+  }), {
+    ok: true,
+    turn: {
+      sessionId: "session-1",
+      userMessageId: "user-1",
+      assistantMessageId: "assistant-1",
+      userPrompt: "OpenCode user prompt.",
+      assistantReply: "",
+      outcome: "interrupted",
+    },
+  });
+});
+
+test("OpenCode SDK messages materialize a completed compaction continuation as the original turn", () => {
+  const messages = compactedOpenCodeMessages();
+  assert.deepEqual(openCodeMessageTurn(messages, {
+    sessionId: "session-1",
+    userMessageId: "user-1",
+    assistantMessageId: "assistant-final",
+  }), {
+    ok: true,
+    turn: {
+      sessionId: "session-1",
+      userMessageId: "user-1",
+      assistantMessageId: "assistant-final",
+      userPrompt: "OpenCode user prompt.",
+      assistantReply: "OpenCode final reply.",
+      outcome: "completed",
+    },
+  });
+
+  assert.deepEqual(openCodeMessageTurn(messages, {
+    sessionId: "session-1",
+    userMessageId: "user-1",
+    assistantMessageId: "assistant-tail",
+  }), { ok: false, reason: "message_identity_mismatch" });
+
+  for (const [name, mutate] of [
+    ["unknown compaction tail", (input) => { input[2].parts[0].tail_start_id = "assistant-other"; }],
+    ["unmarked synthetic continuation", (input) => { delete input[3].parts[0].metadata; }],
+    ["unrelated final parent", (input) => { input[4].info.parentID = "user-other"; }],
+  ]) {
+    const invalid = compactedOpenCodeMessages();
+    mutate(invalid);
+    assert.deepEqual(openCodeMessageTurn(invalid, {
+      sessionId: "session-1",
+      userMessageId: "user-1",
+      assistantMessageId: "assistant-final",
+    }), { ok: false, reason: "message_identity_mismatch" }, name);
+  }
+
+  const interrupted = compactedOpenCodeMessages();
+  interrupted[4].info.error = { name: "MessageAbortedError" };
+  interrupted[4].parts = [];
+  assert.deepEqual(openCodeMessageTurn(interrupted, {
+    sessionId: "session-1",
+    userMessageId: "user-1",
+    assistantMessageId: "assistant-final",
+  }), {
+    ok: true,
+    turn: {
+      sessionId: "session-1",
+      userMessageId: "user-1",
+      assistantMessageId: "assistant-final",
+      userPrompt: "OpenCode user prompt.",
+      assistantReply: "",
+      outcome: "interrupted",
+    },
+  });
 });
 
 test("OpenCode finalizes an explicit MessageAbortedError without writeback", async () => {
@@ -294,6 +370,58 @@ function openCodeMessages() {
         time: { created: 2, completed: 3 },
       },
       parts: [textPart("assistant-1", "OpenCode assistant reply.")],
+    },
+  ];
+}
+
+function compactedOpenCodeMessages() {
+  return [
+    openCodeMessages()[0],
+    {
+      info: {
+        id: "assistant-tail",
+        sessionID: "session-1",
+        role: "assistant",
+        parentID: "user-1",
+        time: { created: 2, completed: 3 },
+      },
+      parts: [part("tool", "assistant-tail")],
+    },
+    {
+      info: {
+        id: "user-compaction",
+        sessionID: "session-1",
+        role: "user",
+        time: { created: 4 },
+      },
+      parts: [{
+        ...part("compaction", "user-compaction"),
+        auto: true,
+        tail_start_id: "assistant-tail",
+      }],
+    },
+    {
+      info: {
+        id: "user-continuation",
+        sessionID: "session-1",
+        role: "user",
+        time: { created: 5 },
+      },
+      parts: [{
+        ...textPart("user-continuation", "Continue."),
+        synthetic: true,
+        metadata: { compaction_continue: true },
+      }],
+    },
+    {
+      info: {
+        id: "assistant-final",
+        sessionID: "session-1",
+        role: "assistant",
+        parentID: "user-continuation",
+        time: { created: 6, completed: 7 },
+      },
+      parts: [textPart("assistant-final", "OpenCode final reply.")],
     },
   ];
 }
