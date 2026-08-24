@@ -442,8 +442,9 @@ headless-capable Profile. For OpenCode, both on-demand maintenance and
 first-eligible-prompt initialization run through a short-lived subagent session.
 The detached worker reuses the active OpenCode server when it is reachable.
 Because standalone `opencode run` exposes only process-local server authority,
-the worker owns an authenticated, loopback-only `opencode serve` process when
-session creation cannot reach that authority, and closes it afterward.
+the worker owns an authenticated, loopback-only `opencode serve` process with
+a process-local database when session creation cannot reach that authority,
+and closes it afterward.
 Desktop-only installations with a reachable server do not require a standalone
 OpenCode CLI.
 
