@@ -93,6 +93,29 @@ test("anonymous quota reminders do not expose a Mark ID from another connection"
   assert.doesNotMatch(notice, new RegExp(otherMarkId));
 });
 
+test("anonymous quota reminders bound a stalled Mark ID lookup and fall back", async () => {
+  const diagnostics = [];
+  const startedAt = Date.now();
+  const notice = await claimQuotaNotice(
+    accountConfig("zh"),
+    { featureCode: "memory_search", remaining: 10, limit: 100 },
+    {
+      env: {},
+      timeoutMs: 25,
+      transitionState: async (initial, operation) => operation(initial) ?? initial,
+      diagnosticLogger: (event) => diagnostics.push(event),
+      loadTrialCredential: async ({ runtime }) => {
+        assert.ok(runtime.timeoutMs > 0 && runtime.timeoutMs <= 25);
+        return await new Promise(() => {});
+      },
+    },
+  );
+
+  assert.ok(Date.now() - startedAt < 1_000);
+  assert.match(notice, /memorax-code account --show-mark-id/);
+  assert.deepEqual(diagnostics, ["memorax_quota_notice.mark_id_load_failed"]);
+});
+
 test("registered-account quota reminders omit anonymous claim guidance", async () => {
   let credentialLoads = 0;
   const options = {
@@ -135,7 +158,7 @@ test("quota notices fail open when local reminder state is unavailable", async (
   assert.deepEqual(diagnostics, ["memorax_quota_notice.update_failed"]);
 });
 
-test("pending write quota notices keep the lowest percentage snapshot and are claimed once", async () => {
+test("pending write quota notices keep the lowest snapshot for the originating connection", async () => {
   const claimed = [];
   const runtime = createPendingQuotaNoticeRuntime({
     claimQuotaNotice: async (_config, quota) => {
@@ -144,17 +167,22 @@ test("pending write quota notices keep the lowest percentage snapshot and are cl
     },
   });
   try {
-    runtime.queue({ featureCode: "memory_write", remaining: 20, limit: 100 });
-    runtime.queue({ featureCode: "memory_search", remaining: 1, limit: 100 });
-    runtime.queue({ featureCode: "memory_write", remaining: 1_000, limit: 10_000 });
+    const config = accountConfig();
+    runtime.queue(config, { featureCode: "memory_write", remaining: 20, limit: 100 });
+    runtime.queue(config, { featureCode: "memory_search", remaining: 1, limit: 100 });
+    runtime.queue(config, { featureCode: "memory_write", remaining: 1_000, limit: 10_000 });
 
-    assert.equal(await runtime.claim(accountConfig()), "Quota notice: 1000 remaining.");
-    assert.equal(await runtime.claim(accountConfig()), undefined);
+    assert.equal(await runtime.claim(config), "Quota notice: 1000 remaining.");
+    assert.equal(await runtime.claim(config), undefined);
     assert.deepEqual(claimed, [{
       featureCode: "memory_write",
       remaining: 1_000,
       limit: 10_000,
     }]);
+
+    runtime.queue(config, { featureCode: "memory_write", remaining: 10, limit: 100 });
+    assert.equal(await runtime.claim({ ...config, apiKey: `sk_${"X".repeat(43)}` }), undefined);
+    assert.equal(claimed.length, 1);
   } finally {
     runtime.close();
   }
