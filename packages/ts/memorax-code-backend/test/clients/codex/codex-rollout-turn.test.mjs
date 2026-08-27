@@ -19,7 +19,6 @@ test("Codex rollout reader selects the exact open turn and preserves prompt and 
     turnContext("turn-target"),
     userMessage("  Target prompt with trailing newline.\n"),
     agentMessage("Intermediate update.", "commentary"),
-    responseMessage("assistant", "Wrong duplicate reply.", "final_answer"),
     agentMessage("Target final reply.\n", "final_answer"),
   ]);
 
@@ -69,6 +68,33 @@ test("Codex rollout reader supports response_item-only user and final assistant 
     responseItemUserMessage("Current-format prompt."),
     responseMessage("assistant", "Current-format final reply.", "final_answer"),
     taskComplete("turn-1"),
+  ]);
+
+  assert.deepEqual(codexRolloutTurnFromJsonLines(transcript, {
+    sessionId: "session-1",
+    turnId: "turn-1",
+  }), {
+    ok: true,
+    turn: {
+      sessionId: "session-1",
+      turnId: "turn-1",
+      userPrompt: "Current-format prompt.",
+      assistantReply: "Current-format final reply.",
+      activities: [],
+    },
+  });
+});
+
+test("Codex rollout reader prefers response_item messages over legacy event messages", () => {
+  const transcript = jsonLines([
+    sessionMeta("session-1"),
+    taskStarted("turn-1"),
+    turnContext("turn-1"),
+    responseItemUserMessage("Current-format prompt."),
+    userMessage("Legacy prompt."),
+    responseMessage("assistant", "Current-format final reply.", "final_answer"),
+    agentMessage("Legacy final reply.", "final_answer"),
+    taskComplete("turn-1", "Legacy final reply."),
   ]);
 
   assert.deepEqual(codexRolloutTurnFromJsonLines(transcript, {
