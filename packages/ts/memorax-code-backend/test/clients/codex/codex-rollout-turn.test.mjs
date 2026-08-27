@@ -65,8 +65,8 @@ test("Codex rollout reader supports response_item-only user and final assistant 
     sessionMeta("session-1"),
     taskStarted("turn-1"),
     turnContext("turn-1"),
-    responseItemUserMessage("Current-format prompt."),
-    responseMessage("assistant", "Current-format final reply.", "final_answer"),
+    responseItemUserMessage("Current-format prompt.", "turn-1"),
+    responseMessage("assistant", "Current-format final reply.", "final_answer", "turn-1"),
     taskComplete("turn-1"),
   ]);
 
@@ -110,6 +110,47 @@ test("Codex rollout reader prefers response_item messages over legacy event mess
       activities: [],
     },
   });
+});
+
+test("Codex rollout reader fails closed for conflicting response_item turn metadata", () => {
+  for (const conflictingRole of ["user", "assistant"]) {
+    const transcript = jsonLines([
+      sessionMeta("session-1"),
+      taskStarted("turn-1"),
+      turnContext("turn-1"),
+      responseItemUserMessage(
+        "Current-format prompt.",
+        conflictingRole === "user" ? "other-turn" : "turn-1",
+      ),
+      userMessage("Legacy prompt."),
+      responseMessage(
+        "assistant",
+        "Current-format final reply.",
+        "final_answer",
+        conflictingRole === "assistant" ? "other-turn" : "turn-1",
+      ),
+      agentMessage("Legacy final reply.", "final_answer"),
+      taskComplete("turn-1", "Legacy final reply."),
+    ]);
+
+    assert.deepEqual(codexRolloutTurnFromJsonLines(transcript, {
+      sessionId: "session-1",
+      turnId: "turn-1",
+    }), { ok: false, reason: "turn_metadata_mismatch" });
+  }
+
+  assert.deepEqual(codexInterruptedRolloutTurnFromJsonLines(jsonLines([
+    sessionMeta("session-1"),
+    taskStarted("turn-1"),
+    turnContext("turn-1"),
+    responseItemUserMessage("Current-format prompt.", "other-turn"),
+    userMessage("Legacy prompt."),
+    agentMessage("Visible partial reply.", "commentary"),
+    turnAborted("turn-1"),
+  ]), {
+    sessionId: "session-1",
+    turnId: "turn-1",
+  }), { ok: false, reason: "turn_metadata_mismatch" });
 });
 
 test("Codex rollout reader aggregates cumulative token snapshots for the complete turn", () => {
@@ -721,19 +762,30 @@ function tokenUsage(usage) {
   };
 }
 
-function responseMessage(role, text, phase) {
+function responseMessage(role, text, phase, turnId) {
   return {
     timestamp: "2026-07-16T00:00:04.000Z",
     type: "response_item",
-    payload: { type: "message", role, phase, content: [{ type: "output_text", text }] },
+    payload: {
+      type: "message",
+      role,
+      phase,
+      content: [{ type: "output_text", text }],
+      ...(turnId ? { internal_chat_message_metadata_passthrough: { turn_id: turnId } } : {}),
+    },
   };
 }
 
-function responseItemUserMessage(text) {
+function responseItemUserMessage(text, turnId) {
   return {
     timestamp: "2026-07-16T00:00:03.000Z",
     type: "response_item",
-    payload: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+    payload: {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text }],
+      ...(turnId ? { internal_chat_message_metadata_passthrough: { turn_id: turnId } } : {}),
+    },
   };
 }
 
