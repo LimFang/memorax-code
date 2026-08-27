@@ -168,6 +168,8 @@ function scanCodexRolloutTurn(transcript: string, targetTurnId: string): CodexRo
   let userPrompt: string | undefined;
   let assistantReply: string | undefined;
   const visibleAssistantMessages: string[] = [];
+  let responseItemUserPrompt: string | undefined;
+  let responseItemAssistantReply: string | undefined;
   let interrupted = false;
   let interruptedAt: string | undefined;
   let rolledBack = false;
@@ -231,6 +233,16 @@ function scanCodexRolloutTurn(transcript: string, targetTurnId: string): CodexRo
       if (activeTurnId === targetTurnId) {
         const activities = activityCandidatesFromResponseItem(payload);
         if (activities.length > 0) targetActivityGroups.push(activities);
+        if (stringValue(payload.type) === "message") {
+          const role = stringValue(payload.role);
+          const message = responseItemMessageText(payload.content, role);
+          if (role === "user" && message) {
+            userMessageTurnIds.add(activeTurnId);
+            responseItemUserPrompt = message;
+          } else if (role === "assistant" && payload.phase === "final_answer" && message) {
+            responseItemAssistantReply = message;
+          }
+        }
       }
       continue;
     }
@@ -309,8 +321,8 @@ function scanCodexRolloutTurn(transcript: string, targetTurnId: string): CodexRo
     ambiguousSessionMetadata,
     composite,
     targetSeen,
-    userPrompt,
-    assistantReply,
+    userPrompt: userPrompt ?? responseItemUserPrompt,
+    assistantReply: assistantReply ?? responseItemAssistantReply,
     visibleAssistantMessages,
     interrupted,
     interruptedAt,
@@ -322,6 +334,18 @@ function scanCodexRolloutTurn(transcript: string, targetTurnId: string): CodexRo
     turnContextIds,
     userMessageTurnIds,
   };
+}
+
+function responseItemMessageText(value: unknown, role: string | undefined): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const expectedType = role === "user" ? "input_text" : role === "assistant" ? "output_text" : undefined;
+  if (!expectedType) return undefined;
+  const parts = value.flatMap((item): string[] => {
+    if (!isRecord(item) || stringValue(item.type) !== expectedType) return [];
+    const text = nonBlankString(item.text);
+    return text ? [text] : [];
+  });
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
 function codexRolloutSessionMatches(scan: CodexRolloutTurnScan, sessionId: string): boolean {

@@ -61,6 +61,31 @@ test("Codex rollout reader uses task_complete as a completed-turn assistant fall
   });
 });
 
+test("Codex rollout reader supports response_item-only user and final assistant messages", () => {
+  const transcript = jsonLines([
+    sessionMeta("session-1"),
+    taskStarted("turn-1"),
+    turnContext("turn-1"),
+    responseItemUserMessage("Current-format prompt."),
+    responseMessage("assistant", "Current-format final reply.", "final_answer"),
+    taskComplete("turn-1"),
+  ]);
+
+  assert.deepEqual(codexRolloutTurnFromJsonLines(transcript, {
+    sessionId: "session-1",
+    turnId: "turn-1",
+  }), {
+    ok: true,
+    turn: {
+      sessionId: "session-1",
+      turnId: "turn-1",
+      userPrompt: "Current-format prompt.",
+      assistantReply: "Current-format final reply.",
+      activities: [],
+    },
+  });
+});
+
 test("Codex rollout reader aggregates cumulative token snapshots for the complete turn", () => {
   const baseline = tokenUsage({
     input_tokens: 100,
@@ -675,6 +700,14 @@ function responseMessage(role, text, phase) {
     timestamp: "2026-07-16T00:00:04.000Z",
     type: "response_item",
     payload: { type: "message", role, phase, content: [{ type: "output_text", text }] },
+  };
+}
+
+function responseItemUserMessage(text) {
+  return {
+    timestamp: "2026-07-16T00:00:03.000Z",
+    type: "response_item",
+    payload: { type: "message", role: "user", content: [{ type: "input_text", text }] },
   };
 }
 
