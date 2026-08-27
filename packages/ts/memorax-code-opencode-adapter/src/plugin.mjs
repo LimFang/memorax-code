@@ -139,7 +139,7 @@ export function createMemoraxOpenCodePlugin(options = {}) {
         }
       }
       if (incomplete && retryBudget > 0 && pluginEnabled(options)) {
-        await delay(INCOMPLETE_WRITEBACK_RETRY_DELAY_MS, undefined, { ref: false });
+        await delay(INCOMPLETE_WRITEBACK_RETRY_DELAY_MS);
         await flushSession(sessionId, target, retryBudget - 1);
       }
     }
